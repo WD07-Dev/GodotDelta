@@ -1,0 +1,9 @@
+godot/.godot
+*.translation
+
+godot/addons/VimGodot
+build/**
+!build/default.gddeltainclude
+package
+build.sh
+cmake

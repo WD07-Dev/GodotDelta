@@ -115,23 +115,19 @@ void CliCommands::build_dev_sandbox(
     }
 
     const auto sandbox_output = sandbox_dir / resolved_base.pack_path.filename();
-    const auto options = support_.build_pack_options_from_base(base_pck);
-    const auto cleanup_patch = support_.create_cleanup_patch(sandbox_dir, options);
-    const auto temp_output = sandbox_dir / (sandbox_output.filename().string() + ".devbuild.tmp");
+    const auto runtime_patch_output = sandbox_dir / (sandbox_output.filename().string() + ".devbuild.runtime_patch.tmp.pck");
 
     try {
-        compose_pack(base_pck, project_dir, temp_output);
-        compose_pack(temp_output, cleanup_patch, sandbox_output);
+        build_runtime_patch_auto(base_pck, project_dir, runtime_patch_output);
+        compose_pack(base_pck, runtime_patch_output, sandbox_output);
     } catch (...) {
         std::error_code remove_error;
-        std::filesystem::remove(temp_output, remove_error);
-        std::filesystem::remove(cleanup_patch, remove_error);
+        std::filesystem::remove(runtime_patch_output, remove_error);
         throw;
     }
 
     std::error_code cleanup_error;
-    std::filesystem::remove(temp_output, cleanup_error);
-    std::filesystem::remove(cleanup_patch, cleanup_error);
+    std::filesystem::remove(runtime_patch_output, cleanup_error);
     support_.copy_runtime_support_files(resolved_base.pack_path, sandbox_dir);
 
     std::cout
