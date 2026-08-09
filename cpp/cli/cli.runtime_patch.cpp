@@ -114,7 +114,7 @@ void CliCommands::build_patch_pck_auto(
             std::to_string(base_reader.header().engine_major) + "." +
             std::to_string(base_reader.header().engine_minor) + "." +
             std::to_string(base_reader.header().engine_patch);
-        } else {
+        }else {
             const gddelta::patch::RuntimePatchResolver resolver(project_dir);
             input_paths = resolver.collect_auto_input_paths(base_reader);
         }
@@ -137,6 +137,7 @@ void CliCommands::build_gdmod(
     const std::filesystem::path& project_dir,
     const std::filesystem::path& output_path
 ) {
+    const auto resolved_base = support_.resolve_base_input(base_pck);
     const auto options = support_.build_pack_options_from_base(base_pck);
     const gddelta::patch::RuntimePatchResolver resolver(project_dir);
     const auto base_reader = support_.open_supported_base_pack(base_pck);
@@ -152,17 +153,17 @@ void CliCommands::build_gdmod(
     }
 
     gddelta::patch::GdmodManifest manifest;
-    manifest.base_file_name = support_.resolve_base_input(base_pck).pack_path.filename().string();
+    manifest.base_file_name = resolved_base.pack_path.filename().string();
     manifest.project_name = project_dir.filename().string();
     manifest.format_version = options.format_version;
     manifest.engine_major = options.engine_major;
     manifest.engine_minor = options.engine_minor;
     manifest.engine_patch = options.engine_patch;
     manifest.entry_count = files.size();
-    manifest.threshold_chunks = gddelta::patch::GdmodPackage::build_default_threshold_chunk_binding(base_pck);
+    manifest.threshold_chunks = gddelta::patch::GdmodPackage::build_default_threshold_chunk_binding(resolved_base.pack_path);
 
     gddelta::patch::GdmodPackage package;
-    package.write(base_pck, output_path, files, options, manifest);
+    package.write(resolved_base.pack_path, output_path, files, options, manifest);
 
     std::cout
     << "Created gdmod " << output_path

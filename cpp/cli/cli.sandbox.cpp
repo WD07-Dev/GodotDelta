@@ -206,7 +206,7 @@ void CliCommands::apply_gdmod(
     if(manifest.legacy_plain_payload) {
         package.extract_patch_pck(gdmod_path, temp_patch_path);
     } else {
-        package.extract_protected_patch_pck(base_pck, gdmod_path, temp_patch_path);
+        package.extract_protected_patch_pck(resolved_base.pack_path, gdmod_path, temp_patch_path);
     }
     try {
         if(sandbox_dir.has_value()) {

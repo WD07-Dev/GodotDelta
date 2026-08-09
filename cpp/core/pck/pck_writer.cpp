@@ -28,6 +28,7 @@ namespace {
         std::filesystem::path source_path;
         std::filesystem::path source_pack_path;
         std::uint64_t source_offset = 0;
+        std::vector<std::uint8_t> inline_data;
         std::string pack_path;
         std::uint64_t offset = 0;
         std::uint64_t size = 0;
@@ -264,13 +265,14 @@ namespace {
             entry.source_path = file.source_path;
             entry.source_pack_path = file.source_pack_path;
             entry.source_offset = file.source_offset;
+            entry.inline_data = file.inline_data;
             entry.pack_path = normalize_pack_path(file.pack_path);
             entry.md5 = {};
             entry.flags = file.removal ? kPackFileRemoval : 0;
             if(file.removal) {
                 entry.size = 0;
-            }else if(!file.inline_data.empty()) {
-                entry.size = static_cast<std::uint64_t>(file.inline_data.size());
+            }else if(!entry.inline_data.empty()) {
+                entry.size = static_cast<std::uint64_t>(entry.inline_data.size());
             }else if(!file.source_pack_path.empty()) {
                 entry.size = file.source_size;
             }else {
@@ -351,9 +353,7 @@ namespace {
     }
 
     void write_inline_bytes(const std::vector<std::uint8_t>& bytes, std::ostream& output) {
-        if(bytes.empty()) {
-            return;
-        }
+        if(bytes.empty()) return;
         output.write(reinterpret_cast<const char *>(bytes.data()), static_cast<std::streamsize>(bytes.size()));
         if(!output) {
             throw std::runtime_error("Failed to write inline file data into PCK.");
@@ -429,10 +429,10 @@ void PckWriter::write_files(
             entry.offset = static_cast<std::uint64_t>(output.tellp()) - files_start;
             const auto &source = entries[index];
             if((entry.flags & kPackFileRemoval) == 0) {
-                if(!files[index].inline_data.empty()) {
-                    write_inline_bytes(files[index].inline_data, output);
+                if(!source.inline_data.empty()) {
+                    write_inline_bytes(source.inline_data, output);
                 }else if(!source.source_pack_path.empty()) {
-                    copy_file_range_bytes(source.source_pack_path, source.source_offset, files[index].source_size, output);
+                    copy_file_range_bytes(source.source_pack_path, source.source_offset, source.size, output);
                 }else {
                     copy_file_bytes(source.source_path, output);
                 }
@@ -489,10 +489,10 @@ void PckWriter::write_files(
             entry.offset = static_cast<std::uint64_t>(output.tellp()) - files_start;
             const auto &source = entries[index];
             if((entry.flags & kPackFileRemoval) == 0) {
-                if(!files[index].inline_data.empty()) {
-                    write_inline_bytes(files[index].inline_data, output);
+                if(!source.inline_data.empty()) {
+                    write_inline_bytes(source.inline_data, output);
                 }else if(!source.source_pack_path.empty()) {
-                    copy_file_range_bytes(source.source_pack_path, source.source_offset, files[index].source_size, output);
+                    copy_file_range_bytes(source.source_pack_path, source.source_offset, source.size, output);
                 }else {
                     copy_file_bytes(source.source_path, output);
                 }

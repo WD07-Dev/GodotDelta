@@ -22,9 +22,9 @@
 using namespace gddelta::patch;
 
 namespace {
-constexpr const char *kGdmodManifestPackPath = "res://.gddelta/gdmod.meta";
-constexpr const char *kGdmodPayloadPackPath = "res://.gddelta/payload.bin";
-constexpr const char *kGdmodSlotPackPathPrefix = "res://.gddelta/slots/";
+constexpr const char *kGdmodManifestPackPath = ".gddelta/gdmod.meta";
+constexpr const char *kGdmodPayloadPackPath = ".gddelta/payload.bin";
+constexpr const char *kGdmodSlotPackPathPrefix = ".gddelta/slots/";
 constexpr std::uint32_t kGdmodManifestVersion1 = 1;
 constexpr std::uint32_t kGdmodManifestVersion2 = 2;
 constexpr std::uint32_t kEncryptedBlobVersion = 1;
@@ -57,6 +57,40 @@ std::string to_lower_copy(std::string value) {
         return static_cast<char>(std::tolower(character));
     });
     return value;
+}
+
+std::string trim_copy(std::string_view value) {
+    auto start = std::size_t{0};
+    auto end = value.size();
+    while(start < end && std::isspace(static_cast<unsigned char>(value[start])) != 0) {
+        ++start;
+    }
+    while(end > start && std::isspace(static_cast<unsigned char>(value[end - 1])) != 0) {
+        --end;
+    }
+    return std::string(value.substr(start, end - start));
+}
+
+std::string strip_utf8_bom(std::string_view value) {
+    if(value.size() >= 3 &&
+        static_cast<unsigned char>(value[0]) == 0xEF &&
+        static_cast<unsigned char>(value[1]) == 0xBB &&
+        static_cast<unsigned char>(value[2]) == 0xBF) {
+        return std::string(value.substr(3));
+    }
+    return std::string(value);
+}
+
+std::string strip_leading_control_bytes(std::string_view value) {
+    auto start = std::size_t{0};
+    while(start < value.size()) {
+        const auto character = static_cast<unsigned char>(value[start]);
+        if(character >= 0x20 || character == '\t') {
+            break;
+        }
+        ++start;
+    }
+    return std::string(value.substr(start));
 }
 
 std::vector<std::string> split_csv(std::string_view value) {
@@ -128,6 +162,27 @@ std::string build_slot_pack_path(std::size_t index) {
     std::ostringstream output;
     output << kGdmodSlotPackPathPrefix << std::setw(3) << std::setfill('0') << index << ".share";
     return output.str();
+}
+
+std::string normalize_lookup_pack_path(std::string_view path) {
+    auto normalized = std::string(path);
+    if(normalized.rfind("res://", 0) == 0) {
+        normalized.erase(0, 6);
+    }
+    while(!normalized.empty() && normalized.front() == '/') {
+        normalized.erase(normalized.begin());
+    }
+    return normalized;
+}
+
+std::optional<gddelta::pck::PckEntry> find_pack_entry(
+    const gddelta::pck::PckReader& reader,
+    std::string_view pack_path
+) {
+    if(const auto exact = reader.find_entry(pack_path); exact.has_value()) {
+        return exact;
+    }
+    return reader.find_entry(normalize_lookup_pack_path(pack_path));
 }
 
 void append_bytes(ByteVector& output, std::string_view value) {
@@ -352,31 +407,37 @@ ByteVector decrypt_aes_256_gcm(const ByteVector& key, const ByteVector& blob) {
     return plaintext;
 }
 
-std::array<std::uint8_t, 512> gf256_exp_table;
-std::array<std::uint8_t, 256> gf256_log_table;
-
-struct Gf256TablesInitializer {
-    Gf256TablesInitializer() {
-        std::uint16_t value = 1;
-        for(int index = 0; index < 255; ++index) {
-            gf256_exp_table[index] = static_cast<std::uint8_t>(value);
-            gf256_log_table[gf256_exp_table[index]] = static_cast<std::uint8_t>(index);
-            value <<= 1U;
-            if((value & 0x100U) != 0) {
-                value ^= 0x11bU;
-            }
-        }
-        for(int index = 255; index < 512; ++index) {
-            gf256_exp_table[index] = gf256_exp_table[index - 255];
-        }
-    }
-} gf256_tables_initializer;
-
 std::uint8_t gf256_mul(std::uint8_t lhs, std::uint8_t rhs) {
-    if(lhs == 0 || rhs == 0) {
-        return 0;
+    std::uint8_t result = 0;
+    auto left = lhs;
+    auto right = rhs;
+    while(right != 0) {
+        if((right & 1U) != 0) {
+            result ^= left;
+        }
+
+        const auto high_bit = static_cast<bool>((left & 0x80U) != 0);
+        left = static_cast<std::uint8_t>(left << 1U);
+        if(high_bit) {
+            left ^= 0x1bU;
+        }
+        right = static_cast<std::uint8_t>(right >> 1U);
     }
-    return gf256_exp_table[gf256_log_table[lhs] + gf256_log_table[rhs]];
+    return result;
+}
+
+std::uint8_t gf256_pow(std::uint8_t value, std::uint16_t exponent) {
+    std::uint8_t result = 1;
+    auto base = value;
+    auto power = exponent;
+    while(power != 0) {
+        if((power & 1U) != 0) {
+            result = gf256_mul(result, base);
+        }
+        base = gf256_mul(base, base);
+        power = static_cast<std::uint16_t>(power >> 1U);
+    }
+    return result;
 }
 
 std::uint8_t gf256_div(std::uint8_t lhs, std::uint8_t rhs) {
@@ -386,13 +447,8 @@ std::uint8_t gf256_div(std::uint8_t lhs, std::uint8_t rhs) {
     if(lhs == 0) {
         return 0;
     }
-    const auto lhs_log = static_cast<int>(gf256_log_table[lhs]);
-    const auto rhs_log = static_cast<int>(gf256_log_table[rhs]);
-    auto diff = lhs_log - rhs_log;
-    if(diff < 0) {
-        diff += 255;
-    }
-    return gf256_exp_table[diff];
+    const auto inverse = gf256_pow(rhs, 254);
+    return gf256_mul(lhs, inverse);
 }
 
 std::vector<ByteVector> split_secret_shares(
@@ -480,7 +536,7 @@ ByteVector read_chunk_from_base_pack(
 ) {
     gddelta::pck::PckReader reader;
     reader.open(base_pck);
-    const auto entry = reader.find_entry(slot.source_path);
+    const auto entry = find_pack_entry(reader, slot.source_path);
     if(!entry.has_value()) {
         throw std::runtime_error("Base pack is missing chunk source path: " + slot.source_path);
     }
@@ -619,8 +675,10 @@ GdmodManifest parse_manifest_text(std::string_view text) {
         const auto delimiter = line.find('=');
         if(delimiter == std::string::npos) continue;
 
-        const auto key = line.substr(0, delimiter);
-        const auto value = line.substr(delimiter + 1);
+        auto key = trim_copy(line.substr(0, delimiter));
+        auto value = trim_copy(line.substr(delimiter + 1));
+        key = strip_utf8_bom(key);
+        key = strip_leading_control_bytes(key);
         if(key == "type") {
             type = value;
             continue;
@@ -734,8 +792,15 @@ GdmodManifest parse_manifest_text(std::string_view text) {
         }
     }
 
+    if(type.empty() && version == kGdmodManifestVersion2) {
+        type = "gdmod";
+    }
+
     if(type != "gdmod" || (version != kGdmodManifestVersion1 && version != kGdmodManifestVersion2)) {
-        throw std::runtime_error("Invalid gdmod manifest.");
+        throw std::runtime_error(
+            "Invalid gdmod manifest. Parsed type='" + type +
+            "', version=" + std::to_string(version) + "."
+        );
     }
 
     if(version == kGdmodManifestVersion1) {
@@ -854,15 +919,20 @@ void GdmodPackage::write(
 bool GdmodPackage::is_gdmod(const std::filesystem::path& input_path) const {
     pck::PckReader reader;
     reader.open(input_path);
-    return reader.find_entry(manifest_pack_path()).has_value();
+    return find_pack_entry(reader, manifest_pack_path()).has_value();
 }
 
 GdmodManifest GdmodPackage::read_manifest(const std::filesystem::path& input_path) const {
     pck::PckReader reader;
     reader.open(input_path);
-    const auto manifest_entry = reader.find_entry(manifest_pack_path());
+    const auto manifest_entry = find_pack_entry(reader, manifest_pack_path());
     if(!manifest_entry.has_value()) {
-        throw std::runtime_error("Input is not a gdmod package: " + input_path.string());
+        throw std::runtime_error(
+            "Input is not a valid gdmod package (missing " +
+            std::string(manifest_pack_path()) +
+            "): " + input_path.string() +
+            ". Recreate the file with `gddelta make` from an updated build."
+        );
     }
 
     const auto bytes = reader.read_entry_data(*manifest_entry);
@@ -882,10 +952,7 @@ void GdmodPackage::extract_patch_pck(
     std::vector<pck::PckWriteFile> files;
     files.reserve(reader.entries().size());
     for(const auto& entry : reader.entries()) {
-        if(entry.path == manifest_pack_path()) {
-            continue;
-        }
-
+        if(entry.path == manifest_pack_path()) continue;
         pck::PckWriteFile file;
         file.pack_path = entry.path;
         file.removal = (entry.flags & pck::kPackFileRemoval) != 0;
@@ -924,7 +991,7 @@ void GdmodPackage::extract_protected_patch_pck(
     std::vector<ByteVector> recovered_shares;
     recovered_shares.reserve(manifest.threshold_chunks.threshold);
     for(const auto& slot : manifest.threshold_chunks.slots) {
-        const auto share_entry = reader.find_entry(slot.share_pack_path);
+        const auto share_entry = find_pack_entry(reader, slot.share_pack_path);
         if(!share_entry.has_value()) continue;
         try {
             const auto chunk_bytes = read_chunk_from_base_pack(base_pck, slot);
@@ -938,9 +1005,7 @@ void GdmodPackage::extract_protected_patch_pck(
             continue;
         }
 
-        if(recovered_shares.size() >= manifest.threshold_chunks.threshold) {
-            break;
-        }
+        if(recovered_shares.size() >= manifest.threshold_chunks.threshold) break;
     }
 
     if(recovered_shares.size() < manifest.threshold_chunks.threshold) {
@@ -948,7 +1013,7 @@ void GdmodPackage::extract_protected_patch_pck(
     }
 
     const auto payload_key = combine_secret_shares(recovered_shares, manifest.threshold_chunks.threshold);
-    const auto payload_entry = reader.find_entry(manifest.payload_pack_path);
+    const auto payload_entry = find_pack_entry(reader, manifest.payload_pack_path);
     if(!payload_entry.has_value()) {
         throw std::runtime_error("Protected gdmod is missing encrypted payload entry.");
     }

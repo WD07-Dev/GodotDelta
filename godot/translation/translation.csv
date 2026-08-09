@@ -10,8 +10,9 @@ PLACEHOLDER_BASE_PATH,C:/path/to/game.pck or game.exe,C:/경로/게임.pck 또�
 BROWSE,Browse,찾아보기
 PROJECT_DIRECTORY,Project Directory,프로젝트 디렉터리
 PLACEHOLDER_PROJECT_PATH,C:/path/to/project,C:/경로/프로젝트
-PATCH_PCK,Patch PCK,패치 PCK
-PLACEHOLDER_PATCH_PATH,C:/path/to/mod_patch.pck,C:/경로/모드_패치.pck
+PATCH_PACKAGE,Patch Package,패치 패키지
+PLACEHOLDER_PATCH_PATH,C:/path/to/mod.gdmod,C:/경로/모드.gdmod
+OVERWRITE_BASE,Overwrite Base,원본 덮어쓰기
 APPLY_OUTPUT_DIRECTORY,Apply Output Directory,적용 출력 디렉터리
 PLACEHOLDER_APPLY_OUTPUT_PATH,C:/path/to/applied-output,C:/경로/적용-출력
 MAKE_PATCH,Make Patch,패치 만들기

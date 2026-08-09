@@ -812,10 +812,7 @@ void CliSupport::copy_runtime_support_files(
             }
             continue;
         }
-
-        if(!entry.is_regular_file()) {
-            continue;
-        }
+        if(!entry.is_regular_file()) continue;
 
         std::filesystem::create_directories(destination.parent_path(), ec);
         if(ec) {

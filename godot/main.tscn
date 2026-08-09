@@ -115,7 +115,7 @@ text = "BROWSE"
 
 [node name="PatchLabel" type="Label" parent="Margin/Root/Tabs/Patch" unique_id=1867581636]
 layout_mode = 2
-text = "PATCH_PCK"
+text = "PATCH_PACKAGE"
 
 [node name="PatchOutputRow" type="HBoxContainer" parent="Margin/Root/Tabs/Patch" unique_id=35751516]
 layout_mode = 2
@@ -130,11 +130,18 @@ placeholder_text = "PLACEHOLDER_PATCH_PATH"
 layout_mode = 2
 text = "BROWSE"
 
+[node name="OverwriteCheckBox" type="CheckBox" parent="Margin/Root/Tabs/Patch"]
+layout_mode = 2
+button_pressed = true
+text = "OVERWRITE_BASE"
+
 [node name="ApplyLabel" type="Label" parent="Margin/Root/Tabs/Patch" unique_id=1617204302]
+visible = false
 layout_mode = 2
 text = "APPLY_OUTPUT_DIRECTORY"
 
 [node name="ApplyOutputRow" type="HBoxContainer" parent="Margin/Root/Tabs/Patch" unique_id=484257297]
+visible = false
 layout_mode = 2
 theme_override_constants/separation = 8
 
@@ -350,6 +357,7 @@ use_native_dialog = true
 [connection signal="pressed" from="Margin/Root/Tabs/Patch/BaseRow/BaseBrowseButton" to="Margin/Root/Tabs/Patch" method="_on_base_browse_pressed"]
 [connection signal="pressed" from="Margin/Root/Tabs/Patch/ProjectRow/ProjectBrowseButton" to="Margin/Root/Tabs/Patch" method="_on_project_browse_pressed"]
 [connection signal="pressed" from="Margin/Root/Tabs/Patch/PatchOutputRow/PatchBrowseButton" to="Margin/Root/Tabs/Patch" method="_on_patch_browse_pressed"]
+[connection signal="toggled" from="Margin/Root/Tabs/Patch/OverwriteCheckBox" to="Margin/Root/Tabs/Patch" method="_on_overwrite_check_box_toggled"]
 [connection signal="pressed" from="Margin/Root/Tabs/Patch/ApplyOutputRow/ApplyOutputBrowseButton" to="Margin/Root/Tabs/Patch" method="_on_apply_output_browse_pressed"]
 [connection signal="pressed" from="Margin/Root/Tabs/Patch/PatchButtons/MakePatchButton" to="Margin/Root/Tabs/Patch" method="_on_make_patch_pressed"]
 [connection signal="pressed" from="Margin/Root/Tabs/Patch/PatchButtons/ApplyButton" to="Margin/Root/Tabs/Patch" method="_on_apply_pressed"]
