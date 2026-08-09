@@ -251,6 +251,12 @@ layout_mode = 2
 size_flags_horizontal = 3
 text = "DEV_BUILD"
 
+[node name="RunButton" type="Button" parent="Margin/Root/Tabs/Patch (DevMode)/DevButtons" unique_id=214590001]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+text = "RUN_GAME"
+
 [node name="Live Patch (DevMode)" type="VBoxContainer" parent="Margin/Root/Tabs" unique_id=841235111]
 unique_name_in_owner = true
 visible = false
@@ -389,6 +395,7 @@ use_native_dialog = true
 [connection signal="pressed" from="Margin/Root/Tabs/Patch (DevMode)/DevProjectRow/DevProjectBrowseButton" to="Margin/Root/Tabs/Patch (DevMode)" method="_on_dev_project_browse_pressed"]
 [connection signal="pressed" from="Margin/Root/Tabs/Patch (DevMode)/SandboxRow/SandboxBrowseButton" to="Margin/Root/Tabs/Patch (DevMode)" method="_on_sandbox_browse_pressed"]
 [connection signal="pressed" from="Margin/Root/Tabs/Patch (DevMode)/DevButtons/DevBuildButton" to="Margin/Root/Tabs/Patch (DevMode)" method="_on_dev_build_pressed"]
+[connection signal="pressed" from="Margin/Root/Tabs/Patch (DevMode)/DevButtons/RunButton" to="Margin/Root/Tabs/Patch (DevMode)" method="_on_run_button_pressed"]
 [connection signal="pressed" from="Margin/Root/Tabs/Live Patch (DevMode)/LiveBaseRow/LiveBaseBrowseButton" to="Margin/Root/Tabs/Live Patch (DevMode)" method="_on_dev_base_browse_pressed"]
 [connection signal="pressed" from="Margin/Root/Tabs/Live Patch (DevMode)/LiveProjectRow/LiveProjectBrowseButton" to="Margin/Root/Tabs/Live Patch (DevMode)" method="_on_dev_project_browse_pressed"]
 [connection signal="pressed" from="Margin/Root/Tabs/Live Patch (DevMode)/LivePatchRow/LivePatchBrowseButton" to="Margin/Root/Tabs/Live Patch (DevMode)" method="_on_dev_patch_browse_pressed"]

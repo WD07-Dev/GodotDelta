@@ -21,6 +21,16 @@ func _on_dev_build_pressed() -> void:
 		sandbox_path_edit.text,
 	])
 
+func _on_run_button_pressed() -> void:
+	var controller := _controller()
+	if(controller == null): return;
+
+	if(!controller.validate_required_paths([
+		[tr("SANDBOX_DIRECTORY"), sandbox_path_edit],
+	])): return;
+
+	controller.run_sandbox_game(dev_base_path_edit.text, sandbox_path_edit.text)
+
 func _on_dev_base_browse_pressed() -> void:
 	var controller := _controller()
 	if(controller == null): return;
