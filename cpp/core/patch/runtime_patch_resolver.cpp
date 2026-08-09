@@ -457,21 +457,13 @@ bool RuntimePatchResolver::patch_file_differs_from_base(
     const pck::PckWriteFile& file
 ) {
     const auto base_entry = base_reader.find_entry("res://" + file.pack_path);
-    if(file.removal) {
-        return base_entry.has_value();
-    }
-
-    if(!base_entry.has_value()) {
-        return true;
-    }
-
+    if(file.removal) return base_entry.has_value();
+    if(!base_entry.has_value()) return true;
     return !base_reader.entry_matches_file(*base_entry, file.source_path);
 }
 
 std::vector<std::string> RuntimePatchResolver::collect_text_resource_references(const std::string& relative_path) const {
-    if(!is_text_reference_source(std::filesystem::path(relative_path))) {
-        return {};
-    }
+    if(!is_text_reference_source(std::filesystem::path(relative_path))) return {};
 
     const auto full_path = project_dir_ / relative_path;
     if(!std::filesystem::exists(full_path)) {

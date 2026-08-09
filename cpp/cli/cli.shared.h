@@ -49,13 +49,14 @@ namespace cli_internal {
     class CliSupport {
         private:
             std::filesystem::path cli_path_;
+            mutable bool gdre_ready_announced_ = false;
 
         public:
             void set_cli_path(std::filesystem::path cli_path);
             void launch_ui(const std::filesystem::path& cli_path) const;
             std::filesystem::path resolve_cli_directory(const std::filesystem::path& cli_path) const;
             std::filesystem::path resolve_tools_directory(const std::filesystem::path& cli_path) const;
-            void ensure_gdre_tools(const std::filesystem::path& cli_path);
+            void ensure_gdre_tools(const std::filesystem::path& cli_path) const;
             [[nodiscard]] std::filesystem::path resolve_gdre_tools_path() const;
             [[nodiscard]] std::string run_gdre_tools_command(const std::vector<std::string>& args) const;
             [[nodiscard]] std::string detect_base_engine_version(const std::filesystem::path& base_pck) const;

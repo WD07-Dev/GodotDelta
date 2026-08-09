@@ -6,6 +6,7 @@
 #include "core/pck/pck_embedded.h"
 #include "core/pck/pck_reader.h"
 #include "core/pck/pck_writer.h"
+#include<chrono>
 #include<filesystem>
 #include<fstream>
 #include<iostream>
@@ -64,7 +65,17 @@ namespace {
         }
     }
 
-    std::vector<gddelta::pck::PckWriteFile> collect_legacy_dev_sandbox_files(
+    std::string normalize_pack_relative_path(std::string path) {
+        if(path.rfind("res://", 0) == 0) {
+            path.erase(0, 6);
+        }
+        while(!path.empty() && (path.front() == '/' || path.front() == '\\')) {
+            path.erase(path.begin());
+        }
+        return path;
+    }
+
+    cli_internal::PreparedRuntimePatchFiles collect_legacy_dev_sandbox_files(
         const cli_internal::CliSupport& support,
         const std::filesystem::path& base_pck,
         const std::filesystem::path& project_dir
@@ -76,12 +87,59 @@ namespace {
             base_pck,
             project_dir,
             support.collect_project_source_inputs(project_dir),
-            false
+            true
         );
         if(prepared.files.empty()) {
             throw std::runtime_error("No runtime-related files were found for the requested paths.");
         }
-        return prepared.files;
+        return prepared;
+    }
+
+    cli_internal::PreparedRuntimePatchFiles extract_legacy_patch_pack_files(
+        const std::filesystem::path& patch_pck
+    ) {
+        cli_internal::PreparedRuntimePatchFiles prepared;
+        gddelta::pck::PckReader reader;
+        reader.open(patch_pck);
+
+        const auto timestamp = std::chrono::steady_clock::now().time_since_epoch().count();
+        prepared.temp_dir = std::filesystem::temp_directory_path() / (".gddelta_legacy_patch_" + std::to_string(timestamp));
+        std::filesystem::create_directories(prepared.temp_dir);
+
+        for(const auto& entry : reader.entries()) {
+            if((entry.flags & gddelta::pck::kPackFileRemoval) != 0) {
+                throw std::runtime_error("Legacy v1 apply path does not support removal entries in patch packs.");
+            }
+
+            const auto normalized_path = normalize_pack_relative_path(entry.path);
+            if(normalized_path.empty()) {
+                throw std::runtime_error("Legacy patch pack contains an invalid empty entry path.");
+            }
+
+            const auto relative_path = std::filesystem::path(normalized_path);
+            const auto destination_path = prepared.temp_dir / relative_path;
+            std::filesystem::create_directories(destination_path.parent_path());
+
+            const auto bytes = reader.read_entry_data(entry);
+            std::ofstream file(destination_path, std::ios::binary | std::ios::trunc);
+            if(!file) {
+                throw std::runtime_error("Failed to write extracted legacy patch file: " + destination_path.string());
+            }
+            file.write(reinterpret_cast<const char*>(bytes.data()), static_cast<std::streamsize>(bytes.size()));
+            if(!file) {
+                throw std::runtime_error("Failed to write extracted legacy patch file: " + destination_path.string());
+            }
+
+            gddelta::pck::PckWriteFile write_file;
+            write_file.pack_path = relative_path.generic_string();
+            write_file.source_path = destination_path;
+            prepared.files.push_back(std::move(write_file));
+        }
+
+        if(prepared.files.empty()) {
+            throw std::runtime_error("No runtime-related files were found in the legacy patch pack.");
+        }
+        return prepared;
     }
 }
 
@@ -95,10 +153,20 @@ void CliCommands::compose_pck(
         std::cout << "[compose 1/2] Preparing project patch files\n";
         gddelta::patch::RuntimePatchResolver(patch_pck).warn_if_runtime_is_stale();
         const auto input_paths = support_.collect_project_source_inputs(patch_pck);
-        const auto prepared = support_.prepare_runtime_patch_files(base_pck, patch_pck, input_paths, false);
+        const auto prepared = support_.prepare_runtime_patch_files(
+            base_pck,
+            patch_pck,
+            input_paths,
+            support_.is_legacy_v1_pack(base_pck)
+        );
         std::cout << "[compose 2/2] Merging project patch files into output\n";
         support_.compose_pck_from_project_files(base_pck, prepared.files, output_pck);
-    } else {
+    }else if(support_.is_legacy_v1_pack(base_pck)) {
+        std::cout << "[compose 1/2] Extracting legacy patch pack files\n";
+        const auto prepared = extract_legacy_patch_pack_files(patch_pck);
+        std::cout << "[compose 2/2] Merging legacy patch files into output\n";
+        support_.compose_pck_from_project_files(base_pck, prepared.files, output_pck);
+    }else {
         std::cout << "[compose 1/2] Preparing base and patch packs\n";
         const auto options = support_.build_pack_options_from_base(base_pck);
         const auto temp_base = support_.create_temporary_base_copy(base_pck);
@@ -138,8 +206,8 @@ void CliCommands::build_dev_sandbox(
     const auto runtime_patch_output = sandbox_dir / (sandbox_output.filename().string() + ".devbuild.runtime_patch.tmp.pck");
 
     if(support_.is_legacy_v1_pack(base_pck)) {
-        const auto files = collect_legacy_dev_sandbox_files(support_, base_pck, project_dir);
-        support_.compose_pck_from_project_files(base_pck, files, sandbox_output);
+        const auto prepared = collect_legacy_dev_sandbox_files(support_, base_pck, project_dir);
+        support_.compose_pck_from_project_files(base_pck, prepared.files, sandbox_output);
         support_.copy_runtime_support_files(resolved_base.pack_path, sandbox_dir);
 
         std::cout
@@ -240,7 +308,7 @@ void CliCommands::apply_gdmod(
         if(sandbox_dir.has_value()) {
             std::cout << "[3/4] Building sandbox output from recovered patch\n";
             build_dev_sandbox_from_pck(base_pck, temp_patch_path, *sandbox_dir);
-        } else {
+        }else {
             std::cout << "[3/4] Applying recovered patch into base game\n";
             apply_pck_in_place(base_pck, temp_patch_path);
         }

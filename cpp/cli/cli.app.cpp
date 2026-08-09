@@ -9,10 +9,6 @@ CliApplication::CliApplication():
 
 int CliApplication::run(int argc, char **argv) {
     support_.set_cli_path(argv[0]);
-    const auto is_bootstrap_command = argc >= 2 && std::string_view(argv[1]) == "bootstrap";
-    if(!is_bootstrap_command) {
-        support_.ensure_gdre_tools(argv[0]);
-    }
 
     if(argc < 2) {
         print_usage();
@@ -56,15 +52,14 @@ bool CliApplication::require_arg_count(int argc, int required_argc) {
 }
 
 namespace {
-bool require_non_empty_args(std::initializer_list<const char*> args) {
-    for(const auto* arg : args) {
-        if(arg == nullptr || std::string_view(arg).empty()) {
-            return false;
+    bool require_non_empty_args(std::initializer_list<const char*> args) {
+        for(const auto* arg : args) {
+            if(arg == nullptr || std::string_view(arg).empty()) {
+                return false;
+            }
         }
+        return true;
     }
-
-    return true;
-}
 }
 
 std::uint64_t CliApplication::parse_interval_ms(int argc, char **argv, int index) {

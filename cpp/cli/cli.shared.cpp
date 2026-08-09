@@ -636,11 +636,14 @@ std::filesystem::path CliSupport::resolve_tools_directory(const std::filesystem:
     return resolve_cli_directory(cli_path);
 }
 
-void CliSupport::ensure_gdre_tools(const std::filesystem::path& cli_path) {
+void CliSupport::ensure_gdre_tools(const std::filesystem::path& cli_path) const {
     const auto install_dir = resolve_tools_directory(cli_path);
     const auto normalized_binary_path = gdre_binary_output_path(install_dir);
     if(std::filesystem::exists(normalized_binary_path)) {
-        std::cout << "GDRE tools already installed: " << normalized_binary_path << "\n";
+        if(!gdre_ready_announced_) {
+            std::cout << "GDRE tools ready: " << normalized_binary_path << "\n";
+            gdre_ready_announced_ = true;
+        }
         return;
     }
 
@@ -660,22 +663,26 @@ void CliSupport::ensure_gdre_tools(const std::filesystem::path& cli_path) {
 
     const auto *download_url = gdre_download_url();
 
-    std::cout << "Downloading GDRE tools from " << download_url << "\n";
+    std::cout << "[GDRE 1/3] Downloading GDRE tools from " << download_url << "\n";
 
 #ifdef _WIN32
     download_file_with_urlmon(download_url, archive_path);
+    std::cout << "[GDRE 2/3] Extracting GDRE tools archive\n";
     extract_zip_with_shell(archive_path, extract_dir);
 #else
     download_file_with_libcurl(download_url, archive_path);
+    std::cout << "[GDRE 2/3] Extracting GDRE tools archive\n";
     extract_zip_with_minizip(archive_path, extract_dir);
 #endif
 
+    std::cout << "[GDRE 3/3] Finalizing GDRE tools installation\n";
     copy_directory_contents(extract_dir, install_dir);
     normalize_gdre_layout(install_dir);
 
     std::filesystem::remove_all(extract_dir, ec);
     std::filesystem::remove(archive_path, ec);
 
+    gdre_ready_announced_ = true;
     std::cout << "Prepared GDRE tools in " << install_dir << "\n";
 }
 
@@ -697,6 +704,7 @@ std::filesystem::path CliSupport::resolve_gdre_tools_path() const {
 }
 
 std::string CliSupport::run_gdre_tools_command(const std::vector<std::string>& args) const {
+    ensure_gdre_tools(cli_path_);
     const auto gdre_path = resolve_gdre_tools_path();
     const auto output_path = build_temporary_copy_path("gdre_tools_output.txt");
 
@@ -807,13 +815,13 @@ std::string CliSupport::detect_base_engine_version(const std::filesystem::path& 
         std::filesystem::remove(temp_copy, ec);
         throw;
     }
-
     std::error_code ec;
     std::filesystem::remove(temp_copy, ec);
+
     return
-        std::to_string(base_reader.header().engine_major) + "." +
-        std::to_string(base_reader.header().engine_minor) + "." +
-        std::to_string(base_reader.header().engine_patch);
+    std::to_string(base_reader.header().engine_major) + "." +
+    std::to_string(base_reader.header().engine_minor) + "." +
+    std::to_string(base_reader.header().engine_patch);
 }
 
 std::unordered_map<std::string, std::filesystem::path> CliSupport::compile_gdscript_files(
@@ -825,6 +833,10 @@ std::unordered_map<std::string, std::filesystem::path> CliSupport::compile_gdscr
     if(source_files.empty()) return compiled_outputs;
 
     const auto bytecode_version = detect_base_engine_version(base_pck);
+    std::cout
+    << "Compiling " << source_files.size()
+    << " GDScript file(s) for Godot " << bytecode_version << "\n";
+
     std::unordered_map<std::string, std::vector<std::filesystem::path>> files_by_basename;
     for(const auto& source_file : source_files) {
         files_by_basename[source_file.filename().generic_string()].push_back(source_file);
@@ -860,8 +872,18 @@ std::unordered_map<std::string, std::filesystem::path> CliSupport::compile_gdscr
         compile_batches.push_back(std::move(unique_name_batch));
     }
 
+    std::cout
+    << "Prepared " << compile_batches.size()
+    << " compile batch(es)\n";
+
     std::size_t batch_index = 0;
     for(const auto& batch : compile_batches) {
+        const auto current_batch_index = batch_index + 1;
+        std::cout
+        << "Compiling batch " << current_batch_index
+        << "/" << compile_batches.size()
+        << " (" << batch.size() << " file(s))\n";
+
         const auto batch_output_dir = output_dir / std::to_string(batch_index++);
         std::filesystem::create_directories(batch_output_dir);
 
@@ -886,6 +908,10 @@ std::unordered_map<std::string, std::filesystem::path> CliSupport::compile_gdscr
             compiled_outputs[source_file.generic_string()] = compiled_output_path;
         }
     }
+
+    std::cout
+    << "Finished compiling " << compiled_outputs.size()
+    << " GDScript output file(s)\n";
     return compiled_outputs;
 }
 
@@ -956,9 +982,9 @@ void CliSupport::compose_pck_from_project_files(
                 }
                 if(gdc_entry.has_value()) {
                     patch_args.push_back("--patch-file=" + compiled_output_path.string() + "=res://" + gdc_pack_path.generic_string());
-                } else if(autoconverted_gdc_entry.has_value()) {
+                }else if(autoconverted_gdc_entry.has_value()) {
                     patch_args.push_back("--patch-file=" + compiled_output_path.string() + "=res://.autoconverted/" + gdc_pack_path.generic_string());
-                } else if(is_godot3) {
+                }else if(is_godot3) {
                     patch_args.push_back("--patch-file=" + compiled_output_path.string() + "=res://" + gdc_pack_path.generic_string());
                 }
             }
@@ -1067,10 +1093,7 @@ std::filesystem::path CliSupport::prepare_runtime_patch_files_for_write(
         gd_files.push_back(file.source_path);
         gd_pack_sources[file.pack_path] = file.source_path;
     }
-
-    if(gd_files.empty()) {
-        return {};
-    }
+    if(gd_files.empty()) return {};
 
     const auto timestamp = std::chrono::steady_clock::now().time_since_epoch().count();
     const auto temp_root = std::filesystem::temp_directory_path() / (".gddelta_compiled_patch_" + std::to_string(timestamp));

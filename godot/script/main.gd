@@ -22,7 +22,6 @@ func _ready() -> void:
 	gddelta_executable_path = _default_gddelta_path()
 	_update_runtime_status()
 	_update_advanced_state()
-	_prepare_gdre_tools()
 
 func _exit_tree() -> void:
 	stop_watch_process()
