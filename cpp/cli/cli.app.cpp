@@ -8,6 +8,7 @@ CliApplication::CliApplication():
 }
 
 int CliApplication::run(int argc, char **argv) {
+    support_.set_cli_path(argv[0]);
     const auto is_bootstrap_command = argc >= 2 && std::string_view(argv[1]) == "bootstrap";
     if(!is_bootstrap_command) {
         support_.ensure_gdre_tools(argv[0]);
@@ -28,8 +29,9 @@ void CliApplication::print_usage() {
     << "  gddelta ui\n"
     << "\n"
     << "  Distribution:\n"
-    << "  gddelta make-patch <base.pck|base.exe> <project_dir> <output.pck>\n"
-    << "  gddelta apply <base.pck|base.exe> <patch.pck> [sandbox_dir]\n"
+    << "  gddelta make <base.pck|base.exe> <project_dir> <output.gdmod>\n"
+    << "  gddelta apply-pck <base.pck|base.exe> <patch.pck> [sandbox_dir]\n"
+    << "  gddelta apply <base.pck|base.exe> <input.gdmod> [sandbox_dir]\n"
     << "\n"
     << "  Development:\n"
     << "  gddelta watch-dev-build-patch <base.pck|base.exe> <project_dir> <patch.pck> <sandbox_dir> [interval_ms] [--log-file path]\n"
@@ -39,9 +41,9 @@ void CliApplication::print_usage() {
     << "\n"
     << "  Inspection And Advanced Commands:\n"
     << "  gddelta inspect <input.pck|input.exe>\n"
-    << "  gddelta create <source_dir> <output.pck>\n"
     << "  gddelta diff <base_dir> <modified_dir>\n"
     << "  gddelta patch <base_dir> <modified_dir> <output.pck>\n"
+    << "  gddelta make-pck <base.pck|base.exe> <project_dir> <output.pck>\n"
     << "  gddelta runtime-patch <base.pck|base.exe> <base_dir> <modified_dir> <output.pck>\n"
     << "  gddelta trace-runtime <project_dir> <relative_path> [more_paths...]\n"
     << "  gddelta runtime-patch-files <base.pck|base.exe> <project_dir> <output.pck> <relative_path> [more_paths...]\n"
@@ -115,12 +117,6 @@ int CliApplication::run_command(std::string_view command, int argc, char **argv)
         return 0;
     }
 
-    if(command == "create") {
-        if(!require_arg_count(argc, 4)) return 1;
-        commands_.create_pack(argv[2], argv[3]);
-        return 0;
-    }
-
     if(command == "diff") {
         if(!require_arg_count(argc, 4)) return 1;
         commands_.diff_workspace(argv[2], argv[3]);
@@ -135,7 +131,7 @@ int CliApplication::run_command(std::string_view command, int argc, char **argv)
 
     if(command == "runtime-patch") {
         if(!require_arg_count(argc, 6)) return 1;
-        commands_.build_runtime_patch_pack(argv[2], argv[3], argv[4], argv[5]);
+        commands_.build_patch_pck_from_dirs(argv[2], argv[3], argv[4], argv[5]);
         return 0;
     }
 
@@ -145,31 +141,47 @@ int CliApplication::run_command(std::string_view command, int argc, char **argv)
         return 0;
     }
 
-    if(command == "make-patch") {
+    if(command == "make-pck") {
         if(!require_arg_count(argc, 5)) return 1;
-        commands_.build_runtime_patch_auto(argv[2], argv[3], argv[4]);
+        commands_.build_patch_pck_auto(argv[2], argv[3], argv[4]);
+        return 0;
+    }
+
+    if(command == "make") {
+        if(!require_arg_count(argc, 5)) return 1;
+        commands_.build_gdmod(argv[2], argv[3], argv[4]);
         return 0;
     }
 
     if(command == "runtime-patch-files") {
         if(!require_arg_count(argc, 6)) return 1;
-        commands_.build_runtime_patch_from_files(argv[2], argv[3], argv[4], collect_input_paths(5, argc, argv));
+        commands_.build_patch_pck_from_inputs(argv[2], argv[3], argv[4], collect_input_paths(5, argc, argv));
         return 0;
     }
 
     if(command == "watch-runtime-patch") {
         if(!require_arg_count(argc, 5)) return 1;
         const auto options = parse_watch_options(argc, argv, 5);
-        commands_.watch_runtime_patch(argv[2], argv[3], argv[4], options.interval_ms, options.log_file_path);
+        commands_.watch_patch_pck(argv[2], argv[3], argv[4], options.interval_ms, options.log_file_path);
         return 0;
     }
 
-    if(command == "dev-build-patch" || command == "apply") {
+    if(command == "dev-build-patch" || command == "apply-pck") {
         if(!require_arg_count(argc, 4)) return 1;
         if(argc >= 5) {
-            commands_.build_dev_sandbox_from_patch(argv[2], argv[3], argv[4]);
+            commands_.build_dev_sandbox_from_pck(argv[2], argv[3], argv[4]);
         } else {
-            commands_.apply_patch_in_place(argv[2], argv[3]);
+            commands_.apply_pck_in_place(argv[2], argv[3]);
+        }
+        return 0;
+    }
+
+    if(command == "apply") {
+        if(!require_arg_count(argc, 4)) return 1;
+        if(argc >= 5) {
+            commands_.apply_gdmod(argv[2], argv[3], std::filesystem::path(argv[4]));
+        } else {
+            commands_.apply_gdmod(argv[2], argv[3], std::nullopt);
         }
         return 0;
     }
@@ -180,7 +192,7 @@ int CliApplication::run_command(std::string_view command, int argc, char **argv)
             throw std::runtime_error("watch-dev-build-patch requires non-empty base, project, patch, and sandbox paths.");
         }
         const auto options = parse_watch_options(argc, argv, 6);
-        commands_.watch_dev_sandbox_from_runtime_patch(argv[2], argv[3], argv[4], argv[5], options.interval_ms, options.log_file_path);
+        commands_.watch_dev_sandbox_from_patch_pck(argv[2], argv[3], argv[4], argv[5], options.interval_ms, options.log_file_path);
         return 0;
     }
 
@@ -199,7 +211,7 @@ int CliApplication::run_command(std::string_view command, int argc, char **argv)
 
     if(command == "compose") {
         if(!require_arg_count(argc, 5)) return 1;
-        commands_.compose_pack(argv[2], argv[3], argv[4]);
+        commands_.compose_pck(argv[2], argv[3], argv[4]);
         return 0;
     }
 

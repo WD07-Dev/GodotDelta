@@ -7,6 +7,7 @@
 #include<cstdint>
 #include<filesystem>
 #include<functional>
+#include<optional>
 #include<string>
 #include<vector>
 namespace cli_internal {
@@ -17,11 +18,28 @@ namespace cli_internal {
     };
 
     class CliSupport {
+        private:
+            std::filesystem::path cli_path_;
+
         public:
+            void set_cli_path(std::filesystem::path cli_path);
             void launch_ui(const std::filesystem::path& cli_path) const;
             std::filesystem::path resolve_cli_directory(const std::filesystem::path& cli_path) const;
             std::filesystem::path resolve_tools_directory(const std::filesystem::path& cli_path) const;
             void ensure_gdre_tools(const std::filesystem::path& cli_path);
+            [[nodiscard]] std::filesystem::path resolve_gdre_tools_path() const;
+            [[nodiscard]] std::string run_gdre_tools_command(const std::vector<std::string>& args) const;
+            [[nodiscard]] std::string detect_base_engine_version(const std::filesystem::path& base_pck) const;
+            void compile_gdscript_files(
+                const std::filesystem::path& base_pck,
+                const std::vector<std::filesystem::path>& source_files,
+                const std::filesystem::path& output_dir
+            ) const;
+            void compose_pck_from_project_files(
+                const std::filesystem::path& base_pck,
+                const std::vector<gddelta::pck::PckWriteFile>& files,
+                const std::filesystem::path& output_path
+            ) const;
             BaseInputPaths resolve_base_input(const std::filesystem::path& base_path) const;
             std::filesystem::path create_temporary_base_copy(const std::filesystem::path& base_pck) const;
             gddelta::pck::PckReader open_supported_base_pack(const std::filesystem::path& base_pck) const;

@@ -1,5 +1,6 @@
 #include "cli.commands.h"
 #include "cli.shared.h"
+#include "core/patch/gdmod_package.h"
 #include "core/patch/patch_pack_builder.h"
 #include "core/patch/runtime_patch_resolver.h"
 #include "core/pck/pck_writer.h"
@@ -52,7 +53,7 @@ namespace {
     };
 }
 
-void CliCommands::build_runtime_patch_pack(
+void CliCommands::build_patch_pck_from_dirs(
     const std::filesystem::path& base_pck,
     const std::filesystem::path& base_dir,
     const std::filesystem::path& modified_dir,
@@ -78,7 +79,7 @@ void CliCommands::trace_runtime_paths(
     }
 }
 
-void CliCommands::build_runtime_patch_from_files(
+void CliCommands::build_patch_pck_from_inputs(
     const std::filesystem::path& base_pck,
     const std::filesystem::path& project_dir,
     const std::filesystem::path& output_pck,
@@ -100,7 +101,7 @@ void CliCommands::build_runtime_patch_from_files(
     << " with " << files.size() << " runtime-related entries\n";
 }
 
-void CliCommands::build_runtime_patch_auto(
+void CliCommands::build_patch_pck_auto(
     const std::filesystem::path& base_pck,
     const std::filesystem::path& project_dir,
     const std::filesystem::path& output_pck
@@ -132,10 +133,46 @@ void CliCommands::build_runtime_patch_auto(
     }
 
     support_.print_rebuild_paths("Auto-detected patch inputs", input_paths);
-    build_runtime_patch_from_files(base_pck, project_dir, output_pck, input_paths);
+    build_patch_pck_from_inputs(base_pck, project_dir, output_pck, input_paths);
 }
 
-void CliCommands::watch_runtime_patch(
+void CliCommands::build_gdmod(
+    const std::filesystem::path& base_pck,
+    const std::filesystem::path& project_dir,
+    const std::filesystem::path& output_path
+) {
+    const auto options = support_.build_pack_options_from_base(base_pck);
+    const gddelta::patch::RuntimePatchResolver resolver(project_dir);
+    const auto base_reader = support_.open_supported_base_pack(base_pck);
+    auto input_paths = resolver.collect_auto_input_paths(base_reader);
+    if(input_paths.empty()) {
+        throw std::runtime_error("No changed files were found in the included project scope.");
+    }
+
+    support_.print_rebuild_paths("Auto-detected patch inputs", input_paths);
+    auto files = resolver.collect_patch_files(input_paths);
+    if(files.empty()) {
+        throw std::runtime_error("No runtime-related files were found for the requested paths.");
+    }
+
+    gddelta::patch::GdmodManifest manifest;
+    manifest.base_file_name = support_.resolve_base_input(base_pck).pack_path.filename().string();
+    manifest.project_name = project_dir.filename().string();
+    manifest.format_version = options.format_version;
+    manifest.engine_major = options.engine_major;
+    manifest.engine_minor = options.engine_minor;
+    manifest.engine_patch = options.engine_patch;
+    manifest.entry_count = files.size();
+
+    gddelta::patch::GdmodPackage package;
+    package.write(output_path, files, options, manifest);
+
+    std::cout
+    << "Created gdmod " << output_path
+    << " with " << files.size() << " runtime-related entries\n";
+}
+
+void CliCommands::watch_patch_pck(
     const std::filesystem::path& base_pck,
     const std::filesystem::path& project_dir,
     const std::filesystem::path& output_pck,
@@ -156,6 +193,6 @@ void CliCommands::watch_runtime_patch(
 
         std::cout << "Change detected, rebuilding runtime patch: " << output_pck << "\n";
         support_.print_rebuild_paths("Runtime patch inputs", dirty_paths);
-        build_runtime_patch_from_files(base_pck, project_dir, output_pck, dirty_paths);
+        build_patch_pck_from_inputs(base_pck, project_dir, output_pck, dirty_paths);
     });
 }

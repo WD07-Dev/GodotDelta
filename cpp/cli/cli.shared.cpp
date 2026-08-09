@@ -13,6 +13,7 @@
 #include<fstream>
 #include<iostream>
 #include<optional>
+#include<sstream>
 #include<string>
 #include<stdexcept>
 #include<thread>
@@ -70,6 +71,18 @@ std::filesystem::path build_temporary_copy_path(const std::filesystem::path& sou
     auto temp_path = std::filesystem::temp_directory_path();
     temp_path /= ".gddelta_base_" + source_path.filename().string() + "." + std::to_string(timestamp) + ".tmp";
     return temp_path;
+}
+
+std::string quote_argument(const std::string& value) {
+    std::string result = "\"";
+    for(const auto character : value) {
+        if(character == '"' || character == '\\') {
+            result += '\\';
+        }
+        result += character;
+    }
+    result += '"';
+    return result;
 }
 
 std::string to_lower_copy(std::string value) {
@@ -433,6 +446,10 @@ void extract_zip_with_shell(const std::filesystem::path& archive_path, const std
 
 }
 
+void CliSupport::set_cli_path(std::filesystem::path cli_path) {
+    cli_path_ = std::move(cli_path);
+}
+
 void CliSupport::launch_ui(const std::filesystem::path& cli_path) const {
     const auto ui_path = find_ui_executable(cli_path);
 #ifdef _WIN32
@@ -526,6 +543,191 @@ void CliSupport::ensure_gdre_tools(const std::filesystem::path& cli_path) {
     std::filesystem::remove(archive_path, ec);
 
     std::cout << "Prepared GDRE tools in " << install_dir << "\n";
+}
+
+std::filesystem::path CliSupport::resolve_gdre_tools_path() const {
+    if(cli_path_.empty()) {
+        throw std::runtime_error("CLI path is not initialized.");
+    }
+
+    const auto install_dir = resolve_tools_directory(cli_path_);
+#ifdef _WIN32
+    const auto candidate = install_dir / "gdre_tools.exe";
+#else
+    const auto candidate = install_dir / "gdre_tools";
+#endif
+    if(!std::filesystem::exists(candidate)) {
+        throw std::runtime_error("Failed to find GDRE tools binary: " + candidate.string());
+    }
+    return candidate;
+}
+
+std::string CliSupport::run_gdre_tools_command(const std::vector<std::string>& args) const {
+    const auto gdre_path = resolve_gdre_tools_path();
+    const auto output_path = build_temporary_copy_path("gdre_tools_output.txt");
+
+    std::ostringstream command;
+    command << quote_argument(gdre_path.string());
+    for(const auto& arg : args) {
+        command << " " << quote_argument(arg);
+    }
+    command << " > " << quote_argument(output_path.string()) << " 2>&1";
+
+    const auto exit_code = std::system(command.str().c_str());
+
+    std::ifstream output_stream(output_path, std::ios::binary);
+    std::ostringstream output;
+    output << output_stream.rdbuf();
+    output_stream.close();
+
+    std::error_code ec;
+    std::filesystem::remove(output_path, ec);
+
+    if(exit_code != 0) {
+        throw std::runtime_error("GDRETools command failed.\n" + output.str());
+    }
+
+    return output.str();
+}
+
+std::string CliSupport::detect_base_engine_version(const std::filesystem::path& base_pck) const {
+    const auto temp_copy = create_temporary_base_copy(base_pck);
+    gddelta::pck::PckReader base_reader;
+    try {
+        base_reader.open(temp_copy);
+    } catch(...) {
+        std::error_code ec;
+        std::filesystem::remove(temp_copy, ec);
+        throw;
+    }
+
+    std::error_code ec;
+    std::filesystem::remove(temp_copy, ec);
+    return
+        std::to_string(base_reader.header().engine_major) + "." +
+        std::to_string(base_reader.header().engine_minor) + "." +
+        std::to_string(base_reader.header().engine_patch);
+}
+
+void CliSupport::compile_gdscript_files(
+    const std::filesystem::path& base_pck,
+    const std::vector<std::filesystem::path>& source_files,
+    const std::filesystem::path& output_dir
+) const {
+    if(source_files.empty()) {
+        return;
+    }
+
+    std::vector<std::string> args = {
+        "--headless",
+        "--bytecode=" + detect_base_engine_version(base_pck),
+        "--output=" + output_dir.string(),
+    };
+    for(const auto& source_file : source_files) {
+        args.push_back("--compile=" + source_file.string());
+    }
+    static_cast<void>(run_gdre_tools_command(args));
+}
+
+void CliSupport::compose_pck_from_project_files(
+    const std::filesystem::path& base_pck,
+    const std::vector<gddelta::pck::PckWriteFile>& files,
+    const std::filesystem::path& output_path
+) const {
+    if(files.empty()) {
+        throw std::runtime_error("No files were provided for GDRETools patching.");
+    }
+
+    const auto resolved_base = resolve_base_input(base_pck);
+    if(resolved_base.uses_external_pack && output_path.extension() == ".exe") {
+        throw std::runtime_error("Cannot build a standalone EXE when the base input uses an external sibling PCK.");
+    }
+
+    const auto temp_base = create_temporary_base_copy(base_pck);
+    gddelta::pck::PckReader base_reader;
+    try {
+        base_reader.open(temp_base);
+    } catch(...) {
+        std::error_code ec;
+        std::filesystem::remove(temp_base, ec);
+        throw;
+    }
+
+    const auto timestamp = std::chrono::steady_clock::now().time_since_epoch().count();
+    auto temp_root = std::filesystem::temp_directory_path() / (".gddelta_gdre_patch_" + std::to_string(timestamp));
+    const auto compiled_dir = temp_root / "compiled";
+    std::filesystem::create_directories(compiled_dir);
+
+    std::vector<std::filesystem::path> gd_files;
+    for(const auto& file : files) {
+        if(file.removal) {
+            std::error_code ec;
+            std::filesystem::remove(temp_base, ec);
+            std::filesystem::remove_all(temp_root, ec);
+            throw std::runtime_error("GDRETools file patch path does not support removal entries.");
+        }
+        if(file.source_path.extension() == ".gd") {
+            gd_files.push_back(file.source_path);
+        }
+    }
+
+    if(!gd_files.empty()) {
+        compile_gdscript_files(base_pck, gd_files, compiled_dir);
+    }
+
+    std::vector<std::string> args = {
+        "--headless",
+        "--pck-patch=" + resolved_base.pack_path.string(),
+        "--output=" + output_path.string(),
+    };
+    if(resolved_base.pack_path.extension() == ".exe" && output_path.extension() == ".exe") {
+        args.push_back("--embed=" + resolved_base.pack_path.string());
+    }
+
+    for(const auto& file : files) {
+        if(file.source_path.extension() == ".gd") {
+            const auto gd_entry = base_reader.find_entry("res://" + file.pack_path);
+            if(gd_entry.has_value()) {
+                args.push_back("--patch-file=" + file.source_path.string() + "=res://" + file.pack_path);
+            }
+
+            auto gdc_pack_path = std::filesystem::path(file.pack_path);
+            gdc_pack_path.replace_extension(".gdc");
+            const auto gdc_entry = base_reader.find_entry("res://" + gdc_pack_path.generic_string());
+            if(gdc_entry.has_value()) {
+                std::filesystem::path compiled_output_path;
+                for(const auto& entry : std::filesystem::recursive_directory_iterator(compiled_dir)) {
+                    if(entry.is_regular_file() && entry.path().filename() == gdc_pack_path.filename()) {
+                        compiled_output_path = entry.path();
+                        break;
+                    }
+                }
+                if(compiled_output_path.empty()) {
+                    std::error_code ec;
+                    std::filesystem::remove(temp_base, ec);
+                    std::filesystem::remove_all(temp_root, ec);
+                    throw std::runtime_error("Failed to locate compiled GDScript bytecode output for: " + file.source_path.string());
+                }
+                args.push_back("--patch-file=" + compiled_output_path.string() + "=res://" + gdc_pack_path.generic_string());
+            }
+            continue;
+        }
+
+        args.push_back("--patch-file=" + file.source_path.string() + "=res://" + file.pack_path);
+    }
+
+    try {
+        static_cast<void>(run_gdre_tools_command(args));
+    } catch(...) {
+        std::error_code ec;
+        std::filesystem::remove(temp_base, ec);
+        std::filesystem::remove_all(temp_root, ec);
+        throw;
+    }
+
+    std::error_code ec;
+    std::filesystem::remove(temp_base, ec);
+    std::filesystem::remove_all(temp_root, ec);
 }
 
 BaseInputPaths CliSupport::resolve_base_input(const std::filesystem::path& base_path) const {

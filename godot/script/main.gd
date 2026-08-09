@@ -79,7 +79,7 @@ func _on_make_patch_pressed() -> void:
 	])): return;
 
 	run_gddelta([
-		"make-patch",
+		"make-pck",
 		base_path_edit.text,
 		project_path_edit.text,
 		patch_path_edit.text,
@@ -93,7 +93,7 @@ func _on_apply_pressed() -> void:
 	])): return;
 
 	run_gddelta([
-		"apply",
+		"apply-pck",
 		base_path_edit.text,
 		patch_path_edit.text,
 		apply_output_path_edit.text,

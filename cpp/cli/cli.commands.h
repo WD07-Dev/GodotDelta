@@ -17,14 +17,13 @@ class CliCommands {
         explicit CliCommands(cli_internal::CliSupport& support);
 
         void inspect_pack(const std::filesystem::path& path);
-        void create_pack(const std::filesystem::path& source_dir, const std::filesystem::path& output_pck);
         void diff_workspace(const std::filesystem::path& base_dir, const std::filesystem::path& modified_dir);
         void build_patch_pack(
             const std::filesystem::path& base_dir,
             const std::filesystem::path& modified_dir,
             const std::filesystem::path& output_pck
         );
-        void build_runtime_patch_pack(
+        void build_patch_pck_from_dirs(
             const std::filesystem::path& base_pck,
             const std::filesystem::path& base_dir,
             const std::filesystem::path& modified_dir,
@@ -34,18 +33,23 @@ class CliCommands {
             const std::filesystem::path& project_dir,
             const std::vector<std::string>& input_paths
         );
-        void build_runtime_patch_from_files(
+        void build_patch_pck_from_inputs(
             const std::filesystem::path& base_pck,
             const std::filesystem::path& project_dir,
             const std::filesystem::path& output_pck,
             const std::vector<std::string>& input_paths
         );
-        void build_runtime_patch_auto(
+        void build_patch_pck_auto(
             const std::filesystem::path& base_pck,
             const std::filesystem::path& project_dir,
             const std::filesystem::path& output_pck
         );
-        void watch_runtime_patch(
+        void build_gdmod(
+            const std::filesystem::path& base_pck,
+            const std::filesystem::path& project_dir,
+            const std::filesystem::path& output_path
+        );
+        void watch_patch_pck(
             const std::filesystem::path& base_pck,
             const std::filesystem::path& project_dir,
             const std::filesystem::path& output_pck,
@@ -57,16 +61,21 @@ class CliCommands {
             const std::filesystem::path& project_dir,
             const std::filesystem::path& sandbox_dir
         );
-        void build_dev_sandbox_from_patch(
+        void build_dev_sandbox_from_pck(
             const std::filesystem::path& base_pck,
             const std::filesystem::path& patch_pck,
             const std::filesystem::path& sandbox_dir
         );
-        void apply_patch_in_place(
+        void apply_pck_in_place(
             const std::filesystem::path& base_pck,
             const std::filesystem::path& patch_pck
         );
-        void watch_dev_sandbox_from_runtime_patch(
+        void apply_gdmod(
+            const std::filesystem::path& base_pck,
+            const std::filesystem::path& gdmod_path,
+            const std::optional<std::filesystem::path>& sandbox_dir
+        );
+        void watch_dev_sandbox_from_patch_pck(
             const std::filesystem::path& base_pck,
             const std::filesystem::path& project_dir,
             const std::filesystem::path& patch_pck,
@@ -81,7 +90,7 @@ class CliCommands {
             std::uint64_t interval_ms,
             const std::optional<std::filesystem::path>& log_file_path = std::nullopt
         );
-        void compose_pack(
+        void compose_pck(
             const std::filesystem::path& base_pck,
             const std::filesystem::path& patch_pck,
             const std::filesystem::path& output_pck

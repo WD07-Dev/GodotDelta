@@ -32,40 +32,44 @@ In practice, this makes it more useful for Godot modding than a normal file delt
 Build a patch PCK from a base game and a modified Godot project:
 
 ```bash
-gddelta make-patch <base.pck|base.exe> <project_dir> <output.pck>
+gddelta make-pck <base.pck|base.exe> <project_dir> <output.pck>
+gddelta make <base.pck|base.exe> <project_dir> <output.gdmod>
 ```
 
 Example:
 
 ```bash
-gddelta make-patch game.exe my_mod_project rom_battle_patch.pck
+gddelta make-pck game.exe my_mod_project rom_battle_patch.pck
 ```
 
 This command scans the project scope, detects changed inputs, and writes a patch PCK.
+
+`make` does the same runtime scan, but writes a `gdmod` package with an internal manifest so it can be applied later by GodotDelta.
 
 ### 2. Apply a patch
 
 Apply a patch directly into the base game:
 
 ```bash
-gddelta apply <base.pck|base.exe> <patch.pck>
+gddelta apply-pck <base.pck|base.exe> <patch.pck>
+gddelta apply <base.pck|base.exe> <input.gdmod>
 ```
 
 Or build a patched sandbox copy instead of overwriting the original:
 
 ```bash
-gddelta apply <base.pck|base.exe> <patch.pck> <sandbox_dir>
+gddelta apply-pck <base.pck|base.exe> <patch.pck> <sandbox_dir>
 ```
 
 Examples:
 
 ```bash
-gddelta apply game.exe rom_battle_patch.pck
-gddelta apply game.exe rom_battle_patch.pck output/dev-runtime
+gddelta apply-pck game.exe rom_battle_patch.pck
+gddelta apply-pck game.exe rom_battle_patch.pck output/dev-runtime
 ```
 
 Rules:
-- `apply` without `sandbox_dir` modifies the base game
+- `apply-pck` without `sandbox_dir` modifies the base game
 - other dev/watch commands are intended to work through sandbox output
 
 ### 3. Dev build
@@ -116,7 +120,7 @@ gddelta ui
 
 ## `.gddeltainclude`
 
-`make-patch` uses `.gddeltainclude` from the modder project's root directory to limit project scanning.
+`make-pck` uses `.gddeltainclude` from the modder project's root directory to limit project scanning.
 
 Pattern rules:
 - normal path or glob: include

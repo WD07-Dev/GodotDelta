@@ -1,5 +1,6 @@
 #include "cli.commands.h"
 #include "cli.shared.h"
+#include "core/patch/gdmod_package.h"
 #include "core/patch/merged_pack_builder.h"
 #include "core/patch/runtime_patch_resolver.h"
 #include "core/pck/pck_embedded.h"
@@ -52,45 +53,52 @@ namespace {
             std::ios::fmtflags old_cout_flags_{};
             std::ios::fmtflags old_cerr_flags_{};
     };
+
+    std::vector<std::string> collect_project_source_inputs(const std::filesystem::path& project_dir) {
+        std::vector<std::string> input_paths;
+        for(const auto& entry : std::filesystem::recursive_directory_iterator(project_dir)) {
+            if(!entry.is_regular_file()) {
+                continue;
+            }
+
+            const auto relative_path = std::filesystem::relative(entry.path(), project_dir);
+            if(!gddelta::patch::RuntimePatchResolver::is_project_source_candidate(relative_path)) {
+                continue;
+            }
+
+            input_paths.push_back(relative_path.generic_string());
+        }
+        return input_paths;
+    }
 }
 
-void CliCommands::compose_pack(
+void CliCommands::compose_pck(
     const std::filesystem::path& base_pck,
     const std::filesystem::path& patch_pck,
     const std::filesystem::path& output_pck
 ) {
     const auto resolved_base = support_.resolve_base_input(base_pck);
-    const auto options = support_.build_pack_options_from_base(base_pck);
-    const auto temp_base = support_.create_temporary_base_copy(base_pck);
-
-    gddelta::patch::MergedPackBuilder builder;
-    try {
-        if(std::filesystem::is_directory(patch_pck)) {
-            gddelta::patch::RuntimePatchResolver(patch_pck).warn_if_runtime_is_stale();
-            const auto temp_patch_pck = std::filesystem::path(output_pck.string() + ".input.tmp.pck");
-            gddelta::pck::PckWriter writer;
-            writer.write_from_directory(patch_pck, temp_patch_pck, options);
-            try {
-                builder.build_merged_pack(temp_base, temp_patch_pck, output_pck, options);
-            } catch (...) {
-                std::error_code ec;
-                std::filesystem::remove(temp_patch_pck, ec);
-                throw;
-            }
-
-            std::error_code ec;
-            std::filesystem::remove(temp_patch_pck, ec);
-        }else {
+    if(std::filesystem::is_directory(patch_pck)) {
+        gddelta::patch::RuntimePatchResolver(patch_pck).warn_if_runtime_is_stale();
+        const gddelta::patch::RuntimePatchResolver resolver(patch_pck);
+        const auto input_paths = collect_project_source_inputs(patch_pck);
+        const auto files = resolver.collect_patch_files(input_paths);
+        support_.compose_pck_from_project_files(base_pck, files, output_pck);
+    } else {
+        const auto options = support_.build_pack_options_from_base(base_pck);
+        const auto temp_base = support_.create_temporary_base_copy(base_pck);
+        gddelta::patch::MergedPackBuilder builder;
+        try {
             builder.build_merged_pack(temp_base, patch_pck, output_pck, options);
+        } catch (...) {
+            std::error_code ec;
+            std::filesystem::remove(temp_base, ec);
+            throw;
         }
-    } catch (...) {
+
         std::error_code ec;
         std::filesystem::remove(temp_base, ec);
-        throw;
     }
-
-    std::error_code ec;
-    std::filesystem::remove(temp_base, ec);
 
     if(resolved_base.pack_path.extension() == ".exe" && output_pck.extension() == ".exe") {
         gddelta::pck::EmbeddedPckHandler::fixup_embedded_executable_headers(resolved_base.pack_path, output_pck);
@@ -118,8 +126,8 @@ void CliCommands::build_dev_sandbox(
     const auto runtime_patch_output = sandbox_dir / (sandbox_output.filename().string() + ".devbuild.runtime_patch.tmp.pck");
 
     try {
-        build_runtime_patch_auto(base_pck, project_dir, runtime_patch_output);
-        compose_pack(base_pck, runtime_patch_output, sandbox_output);
+        build_patch_pck_auto(base_pck, project_dir, runtime_patch_output);
+        compose_pck(base_pck, runtime_patch_output, sandbox_output);
     } catch (...) {
         std::error_code remove_error;
         std::filesystem::remove(runtime_patch_output, remove_error);
@@ -136,7 +144,7 @@ void CliCommands::build_dev_sandbox(
     << " and project " << project_dir << "\n";
 }
 
-void CliCommands::build_dev_sandbox_from_patch(
+void CliCommands::build_dev_sandbox_from_pck(
     const std::filesystem::path& base_pck,
     const std::filesystem::path& patch_pck,
     const std::filesystem::path& sandbox_dir
@@ -149,7 +157,7 @@ void CliCommands::build_dev_sandbox_from_patch(
     }
 
     const auto sandbox_output = sandbox_dir / resolved_base.pack_path.filename();
-    compose_pack(base_pck, patch_pck, sandbox_output);
+    compose_pck(base_pck, patch_pck, sandbox_output);
     support_.copy_runtime_support_files(resolved_base.pack_path, sandbox_dir);
 
     std::cout
@@ -158,13 +166,13 @@ void CliCommands::build_dev_sandbox_from_patch(
     << " and patch " << patch_pck << "\n";
 }
 
-void CliCommands::apply_patch_in_place(
+void CliCommands::apply_pck_in_place(
     const std::filesystem::path& base_pck,
     const std::filesystem::path& patch_pck
 ) {
     const auto resolved_base = support_.resolve_base_input(base_pck);
     const auto temp_output = resolved_base.pack_path.parent_path() / (resolved_base.pack_path.stem().string() + ".apply.tmp" + resolved_base.pack_path.extension().string());
-    compose_pack(base_pck, patch_pck, temp_output);
+    compose_pck(base_pck, patch_pck, temp_output);
 
     std::error_code ec;
     std::filesystem::remove(resolved_base.pack_path, ec);
@@ -180,7 +188,45 @@ void CliCommands::apply_patch_in_place(
     << " into base " << base_pck << "\n";
 }
 
-void CliCommands::watch_dev_sandbox_from_runtime_patch(
+void CliCommands::apply_gdmod(
+    const std::filesystem::path& base_pck,
+    const std::filesystem::path& gdmod_path,
+    const std::optional<std::filesystem::path>& sandbox_dir
+) {
+    gddelta::patch::GdmodPackage package;
+    const auto manifest = package.read_manifest(gdmod_path);
+    const auto resolved_base = support_.resolve_base_input(base_pck);
+    const auto temp_patch_path = resolved_base.pack_path.parent_path() / (gdmod_path.stem().string() + ".apply.tmp.pck");
+
+    std::cout
+    << "Applying gdmod " << gdmod_path
+    << " built for " << manifest.base_file_name
+    << " (" << manifest.engine_major << "." << manifest.engine_minor << "." << manifest.engine_patch << ")\n";
+
+    if(manifest.base_file_name != resolved_base.pack_path.filename().string()) {
+        std::cerr
+        << "Warning: gdmod target base is " << manifest.base_file_name
+        << ", but requested base is " << resolved_base.pack_path.filename().string() << "\n";
+    }
+
+    package.extract_patch_pck(gdmod_path, temp_patch_path);
+    try {
+        if(sandbox_dir.has_value()) {
+            build_dev_sandbox_from_pck(base_pck, temp_patch_path, *sandbox_dir);
+        } else {
+            apply_pck_in_place(base_pck, temp_patch_path);
+        }
+    } catch(...) {
+        std::error_code ec;
+        std::filesystem::remove(temp_patch_path, ec);
+        throw;
+    }
+
+    std::error_code ec;
+    std::filesystem::remove(temp_patch_path, ec);
+}
+
+void CliCommands::watch_dev_sandbox_from_patch_pck(
     const std::filesystem::path& base_pck,
     const std::filesystem::path& project_dir,
     const std::filesystem::path& patch_pck,
@@ -192,8 +238,8 @@ void CliCommands::watch_dev_sandbox_from_runtime_patch(
     const gddelta::patch::RuntimePatchResolver resolver(project_dir);
 
     try {
-        build_runtime_patch_auto(base_pck, project_dir, patch_pck);
-        build_dev_sandbox_from_patch(base_pck, patch_pck, sandbox_dir);
+        build_patch_pck_auto(base_pck, project_dir, patch_pck);
+        build_dev_sandbox_from_pck(base_pck, patch_pck, sandbox_dir);
     } catch(const std::exception& exception) {
         std::cout
         << "Initial runtime patch build failed, falling back to base sandbox: "
@@ -217,8 +263,8 @@ void CliCommands::watch_dev_sandbox_from_runtime_patch(
             << "  patch: " << patch_pck << "\n"
             << "  sandbox: " << sandbox_dir << "\n";
             support_.print_rebuild_paths("Runtime patch inputs", dirty_paths);
-            build_runtime_patch_from_files(base_pck, project_dir, patch_pck, dirty_paths);
-            build_dev_sandbox_from_patch(base_pck, patch_pck, sandbox_dir);
+            build_patch_pck_from_inputs(base_pck, project_dir, patch_pck, dirty_paths);
+            build_dev_sandbox_from_pck(base_pck, patch_pck, sandbox_dir);
             std::cout << "Watch rebuild complete.\n";
         } catch(const std::exception& exception) {
             std::cerr << "Watch rebuild failed: " << exception.what() << "\n";
