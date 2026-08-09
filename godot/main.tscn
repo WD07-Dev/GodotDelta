@@ -252,7 +252,6 @@ size_flags_horizontal = 3
 text = "DEV_BUILD"
 
 [node name="RunButton" type="Button" parent="Margin/Root/Tabs/Patch (DevMode)/DevButtons" unique_id=214590001]
-unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 3
 text = "RUN_GAME"
@@ -361,7 +360,6 @@ size_flags_horizontal = 3
 text = "START_WATCH"
 
 [node name="RunButton" type="Button" parent="Margin/Root/Tabs/Live Patch (DevMode)/LiveButtons" unique_id=2088071275]
-unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 3
 text = "RUN_GAME"
