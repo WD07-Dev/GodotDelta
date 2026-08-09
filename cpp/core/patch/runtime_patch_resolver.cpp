@@ -1,4 +1,6 @@
 #include "runtime_patch_resolver.h"
+#include "core/common/include_rules.h"
+#include "core/common/path_utils.h"
 #include<algorithm>
 #include<cstdint>
 #include<fstream>
@@ -15,97 +17,6 @@ using namespace gddelta::patch;
 namespace {
     inline constexpr const char *kProjectIncludeFileName = ".gddeltainclude";
     inline constexpr const char *kDefaultIncludeFilePath = "build/default.gddeltainclude";
-
-    std::string trim_copy(const std::string& value) {
-        const auto first = value.find_first_not_of(" \t\r\n");
-        if(first == std::string::npos) {
-            return {};
-        }
-        const auto last = value.find_last_not_of(" \t\r\n");
-        return value.substr(first, last - first + 1);
-    }
-
-    std::regex compile_include_pattern(const std::string& pattern) {
-        std::string regex_pattern = "^";
-        for(std::size_t i = 0; i < pattern.size(); ++i) {
-            const char ch = pattern[i];
-            if(ch == '*') {
-                const bool is_double_star = i + 1 < pattern.size() && pattern[i + 1] == '*';
-                if(is_double_star) {
-                    regex_pattern += ".*";
-                    ++i;
-                } else {
-                    regex_pattern += "[^/]*";
-                }
-                continue;
-            }
-
-            switch(ch) {
-                case '.':
-                case '^':
-                case '$':
-                case '+':
-                case '?':
-                case '(':
-                case ')':
-                case '[':
-                case ']':
-                case '{':
-                case '}':
-                case '|':
-                case '\\':
-                    regex_pattern += '\\';
-                    break;
-                default:
-                    break;
-            }
-            regex_pattern += ch;
-        }
-        regex_pattern += "$";
-        return std::regex(regex_pattern, std::regex::ECMAScript);
-    }
-
-    std::vector<RuntimePatchResolver::IncludeRule> load_include_patterns_from_file(const std::filesystem::path& include_path) {
-        if(!std::filesystem::exists(include_path)) {
-            return {};
-        }
-
-        std::ifstream input(include_path);
-        if(!input) {
-            throw std::runtime_error("Failed to open include file: " + include_path.string());
-        }
-
-        std::vector<RuntimePatchResolver::IncludeRule> patterns;
-        std::string line;
-        while(std::getline(input, line)) {
-            auto trimmed = trim_copy(line);
-            if(trimmed.empty() || trimmed.front() == '#') {
-                continue;
-            }
-
-            auto mode = RuntimePatchResolver::IncludeRuleMode::Include;
-            if(trimmed.front() == '+') {
-                mode = RuntimePatchResolver::IncludeRuleMode::ForceInclude;
-                trimmed.erase(trimmed.begin());
-                trimmed = trim_copy(trimmed);
-            } else if(trimmed.front() == '!') {
-                mode = RuntimePatchResolver::IncludeRuleMode::Exclude;
-                trimmed.erase(trimmed.begin());
-                trimmed = trim_copy(trimmed);
-            }
-            if(trimmed.rfind("res://", 0) == 0) {
-                trimmed.erase(0, 6);
-            }
-            if(!trimmed.empty() && trimmed.front() == '/') {
-                trimmed.erase(trimmed.begin());
-            }
-            patterns.push_back(RuntimePatchResolver::IncludeRule {
-                compile_include_pattern(trimmed),
-                mode
-            });
-        }
-        return patterns;
-    }
 }
 
 RuntimePatchResolver::RuntimePatchResolver(std::filesystem::path project_dir):
@@ -202,7 +113,7 @@ std::vector<gddelta::pck::PckWriteFile> RuntimePatchResolver::collect_patch_file
             const auto autoconverted_gdc = project_dir_ / ".autoconverted" / gdc_path;
             if(std::filesystem::exists(autoconverted_gdc)) {
                 add_existing_file(gdc_path.generic_string(), autoconverted_gdc);
-            } else {
+            }else {
                 add_optional_file(gdc_path.generic_string());
             }
         }
@@ -242,9 +153,7 @@ std::vector<std::string> RuntimePatchResolver::collect_auto_input_paths(const pc
         const auto differs = std::any_of(patch_files.begin(), patch_files.end(), [&](const pck::PckWriteFile& file) {
             return patch_file_differs_from_base(base_reader, file);
         });
-        if(differs) {
-            dirty_inputs.push_back(input_path);
-        }
+        if(differs) dirty_inputs.push_back(input_path);
     }
     return dirty_inputs;
 }
@@ -293,22 +202,7 @@ std::vector<std::string> RuntimePatchResolver::collect_dirty_input_paths(const w
 }
 
 std::string RuntimePatchResolver::normalize_project_relative_path(const std::string& path) {
-    auto normalized = path;
-    for(auto& ch : normalized) {
-        if(ch == '\\') {
-            ch = '/';
-        }
-    }
-    while(!normalized.empty() && normalized.front() == '/') {
-        normalized.erase(normalized.begin());
-    }
-    if(normalized.rfind("res://", 0) == 0) {
-        normalized = normalized.substr(6);
-    }
-    while(!normalized.empty() && normalized.back() == '/') {
-        normalized.pop_back();
-    }
-    return normalized;
+    return gddelta::common::normalize_pack_relative_path(path);
 }
 
 std::optional<RuntimePatchResolver::TimestampedPath> RuntimePatchResolver::find_newest_project_source() const {
@@ -400,56 +294,25 @@ std::unordered_map<std::string, std::string> RuntimePatchResolver::load_export_f
 }
 
 std::vector<RuntimePatchResolver::IncludeRule> RuntimePatchResolver::load_include_patterns(const std::filesystem::path& project_dir) {
-    std::vector<IncludeRule> patterns;
-
-    const auto default_include_path = std::filesystem::current_path() / kDefaultIncludeFilePath;
-    auto default_patterns = load_include_patterns_from_file(default_include_path);
-    patterns.insert(patterns.end(), default_patterns.begin(), default_patterns.end());
-
-    const auto project_include_path = project_dir / kProjectIncludeFileName;
-    auto project_patterns = load_include_patterns_from_file(project_include_path);
-    patterns.insert(patterns.end(), project_patterns.begin(), project_patterns.end());
-
-    return patterns;
+    return gddelta::common::load_include_patterns(
+        project_dir,
+        std::filesystem::current_path() / kDefaultIncludeFilePath,
+        kProjectIncludeFileName
+    );
 }
 
 bool RuntimePatchResolver::matches_include_patterns(
     const std::string& path,
     const std::vector<IncludeRule>& patterns
 ) {
-    if(patterns.empty()) {
-        return true;
-    }
-
-    auto matched_include = false;
-    for(const auto& pattern : patterns) {
-        if(!std::regex_match(path, pattern.pattern)) {
-            continue;
-        }
-        if(pattern.mode == IncludeRuleMode::Exclude) {
-            return false;
-        }
-        matched_include = true;
-    }
-    return matched_include;
+    return gddelta::common::matches_include_patterns(path, patterns);
 }
 
 bool RuntimePatchResolver::matches_forced_include_patterns(
     const std::string& path,
     const std::vector<IncludeRule>& patterns
 ) {
-    for(const auto& pattern : patterns) {
-        if(!std::regex_match(path, pattern.pattern)) {
-            continue;
-        }
-        if(pattern.mode == IncludeRuleMode::Exclude) {
-            return false;
-        }
-        if(pattern.mode == IncludeRuleMode::ForceInclude) {
-            return true;
-        }
-    }
-    return false;
+    return gddelta::common::matches_forced_include_patterns(path, patterns);
 }
 
 bool RuntimePatchResolver::patch_file_differs_from_base(

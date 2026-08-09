@@ -136,7 +136,7 @@ void PckReader::open_stream(std::ifstream& stream, const std::filesystem::path& 
         }
 
         entry.offset = header_.file_base + relative_offset;
-        if(entry.offset + entry.size > pck_size) {
+        if(entry.offset > pck_size || entry.size > pck_size - entry.offset) {
             throw std::runtime_error("PCK entry is out of bounds: " + entry.path);
         }
         entries_.push_back(std::move(entry));

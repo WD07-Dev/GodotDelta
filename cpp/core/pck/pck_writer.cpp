@@ -1,3 +1,5 @@
+#include "core/common/include_rules.h"
+#include "core/common/path_utils.h"
 #include "pck_writer.h"
 #include<algorithm>
 #include<array>
@@ -13,16 +15,6 @@ namespace {
     inline constexpr const char *kProjectIncludeFileName = ".gddeltainclude";
     inline constexpr const char *kDefaultIncludeFileName = "default.gddeltainclude";
     inline constexpr const char *kDefaultIncludeFilePath = "build/default.gddeltainclude";
-
-    enum class IncludeRuleMode {
-        Include,
-        Exclude,
-    };
-
-    struct IncludeRule {
-        std::regex pattern;
-        IncludeRuleMode mode = IncludeRuleMode::Include;
-    };
 
     struct PendingEntry {
         std::filesystem::path source_path;
@@ -66,129 +58,19 @@ namespace {
     }
     
     std::string normalize_pack_path(const std::filesystem::path& path) {
-        auto normalized = path.generic_string();
-        if(normalized.rfind("res://", 0) == 0) {
-            normalized = normalized.substr(6);
-        }
-        while(!normalized.empty() && normalized.front() == '/') {
-            normalized.erase(normalized.begin());
-        }
-        return normalized;
+        return gddelta::common::normalize_pack_relative_path(path.generic_string());
     }
 
-    std::string trim_copy(const std::string& value) {
-        const auto first = value.find_first_not_of(" \t\r\n");
-        if(first == std::string::npos) {
-            return {};
-        }
-        const auto last = value.find_last_not_of(" \t\r\n");
-        return value.substr(first, last - first + 1);
-    }
-
-    std::regex compile_include_pattern(const std::string& pattern) {
-        std::string regex_pattern = "^";
-        for(std::size_t i = 0; i < pattern.size(); ++i) {
-            const char ch = pattern[i];
-            if(ch == '*') {
-                const bool is_double_star = i + 1 < pattern.size() && pattern[i + 1] == '*';
-                if(is_double_star) {
-                    regex_pattern += ".*";
-                    ++i;
-                }else regex_pattern += "[^/]*";
-                continue;
-            }
-
-            switch (ch) {
-                case '.':
-                case '^':
-                case '$':
-                case '+':
-                case '?':
-                case '(':
-                case ')':
-                case '[':
-                case ']':
-                case '{':
-                case '}':
-                case '|':
-                case '\\':
-                    regex_pattern += '\\';
-                    break;
-                default:
-                    break;
-            }
-            regex_pattern += ch;
-        }
-        regex_pattern += "$";
-        return std::regex(regex_pattern, std::regex::ECMAScript);
-    }
-
-    std::vector<IncludeRule> load_include_patterns_from_file(const std::filesystem::path& include_path) {
-        if(!std::filesystem::exists(include_path)) return {};
-        std::ifstream input(include_path);
-        if(!input) {
-            throw std::runtime_error("Failed to open include file: " + include_path.string());
-        }
-
-        std::vector<IncludeRule> patterns;
-        std::string line;
-        while(std::getline(input, line)) {
-            auto trimmed = trim_copy(line);
-            if(trimmed.empty() || trimmed.front() == '#') continue;
-            auto mode = IncludeRuleMode::Include;
-            if(trimmed.front() == '+') {
-                trimmed.erase(trimmed.begin());
-                trimmed = trim_copy(trimmed);
-            }else if(trimmed.front() == '!') {
-                mode = IncludeRuleMode::Exclude;
-                trimmed.erase(trimmed.begin());
-                trimmed = trim_copy(trimmed);
-            }
-            if(trimmed.rfind("res://", 0) == 0) {
-                trimmed.erase(0, 6);
-            }
-            if(!trimmed.empty() && trimmed.front() == '/') {
-                trimmed.erase(trimmed.begin());
-            }
-            patterns.push_back(IncludeRule {
-                compile_include_pattern(trimmed),
-                mode
-            });
-        }
-        return patterns;
-    }
-
-    std::vector<IncludeRule> load_include_patterns(const std::filesystem::path &root) {
-        std::vector<IncludeRule> patterns;
-
+    std::vector<gddelta::common::IncludeRule> load_include_patterns(const std::filesystem::path &root) {
         const auto current_dir = std::filesystem::current_path();
-        auto default_patterns = load_include_patterns_from_file(current_dir / kDefaultIncludeFileName);
+        auto default_patterns = gddelta::common::load_include_patterns_from_file(current_dir / kDefaultIncludeFileName);
         if(default_patterns.empty()) {
-            default_patterns = load_include_patterns_from_file(current_dir / kDefaultIncludeFilePath);
+            default_patterns = gddelta::common::load_include_patterns_from_file(current_dir / kDefaultIncludeFilePath);
         }
-        patterns.insert(patterns.end(), default_patterns.begin(), default_patterns.end());
-
-        const auto project_include_path = root / kProjectIncludeFileName;
-        auto project_patterns = load_include_patterns_from_file(project_include_path);
+        auto patterns = std::move(default_patterns);
+        const auto project_patterns = gddelta::common::load_include_patterns_from_file(root / kProjectIncludeFileName);
         patterns.insert(patterns.end(), project_patterns.begin(), project_patterns.end());
-
         return patterns;
-    }
-
-    bool matches_include_patterns(
-        const std::string& path,
-        const std::vector<IncludeRule>& patterns
-    ) {
-        if(patterns.empty()) return true;
-        auto matched_include = false;
-        for(const auto& pattern : patterns) {
-            if(!std::regex_match(path, pattern.pattern)) continue;
-            if(pattern.mode == IncludeRuleMode::Exclude) {
-                return false;
-            }
-            matched_include = true;
-        }
-        return matched_include;
     }
 
     bool should_skip_project_entry(const std::filesystem::path& relative_path) {
@@ -236,7 +118,7 @@ namespace {
             if(!item.is_regular_file()) continue;
 
             const auto pack_path = normalize_pack_path(relative_path);
-            if(!matches_include_patterns(pack_path, include_patterns)) continue;
+            if(!gddelta::common::matches_include_patterns(pack_path, include_patterns)) continue;
             
             PendingEntry entry;
             entry.source_path = item.path();

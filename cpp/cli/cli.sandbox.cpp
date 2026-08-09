@@ -1,5 +1,6 @@
 #include "cli.commands.h"
 #include "cli.shared.h"
+#include "core/common/path_utils.h"
 #include "core/patch/gdmod_package.h"
 #include "core/patch/merged_pack_builder.h"
 #include "core/patch/runtime_patch_resolver.h"
@@ -65,16 +66,6 @@ namespace {
         }
     }
 
-    std::string normalize_pack_relative_path(std::string path) {
-        if(path.rfind("res://", 0) == 0) {
-            path.erase(0, 6);
-        }
-        while(!path.empty() && (path.front() == '/' || path.front() == '\\')) {
-            path.erase(path.begin());
-        }
-        return path;
-    }
-
     cli_internal::PreparedRuntimePatchFiles collect_legacy_dev_sandbox_files(
         const cli_internal::CliSupport& support,
         const std::filesystem::path& base_pck,
@@ -111,7 +102,7 @@ namespace {
                 throw std::runtime_error("Legacy v1 apply path does not support removal entries in patch packs.");
             }
 
-            const auto normalized_path = normalize_pack_relative_path(entry.path);
+            const auto normalized_path = gddelta::common::normalize_pack_relative_path(entry.path);
             if(normalized_path.empty()) {
                 throw std::runtime_error("Legacy patch pack contains an invalid empty entry path.");
             }

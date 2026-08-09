@@ -1,5 +1,6 @@
 #pragma once
 
+#include "core/common/include_rules.h"
 #include "core/pck/pck_format.h"
 #include "core/pck/pck_reader.h"
 #include "core/workspace/workspace.h"
@@ -13,16 +14,8 @@
 namespace gddelta::patch {
     class RuntimePatchResolver {
         public:
-            enum class IncludeRuleMode {
-                Include,
-                ForceInclude,
-                Exclude,
-            };
-
-            struct IncludeRule {
-                std::regex pattern;
-                IncludeRuleMode mode = IncludeRuleMode::Include;
-            };
+            using IncludeRuleMode = gddelta::common::IncludeRuleMode;
+            using IncludeRule = gddelta::common::IncludeRule;
 
             explicit RuntimePatchResolver(std::filesystem::path project_dir);
             void warn_if_runtime_is_stale() const;
