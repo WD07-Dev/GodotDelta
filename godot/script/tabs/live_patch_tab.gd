@@ -6,7 +6,6 @@ extends VBoxContainer
 @onready var sandbox_path_edit: LineEdit = %LiveSandboxPath
 @onready var interval_edit: LineEdit = %LiveIntervalPath
 @onready var watch_button: Button = %WatchButton
-@onready var run_button: Button = %RunButton
 
 func _ready() -> void:
 	var controller := _controller()

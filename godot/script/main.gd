@@ -187,16 +187,7 @@ func _default_gddelta_path() -> String:
 	var tools_linux_path := executable_dir.path_join("tools").path_join("gddelta")
 	if(FileAccess.file_exists(tools_linux_path)):
 		return tools_linux_path
-
-	var windows_path := executable_dir.path_join("gddelta.exe")
-	if(FileAccess.file_exists(windows_path)):
-		return windows_path
-
-	var linux_path := executable_dir.path_join("gddelta")
-	if(FileAccess.file_exists(linux_path)):
-		return linux_path
-
-	return windows_path
+	return "";
 
 func _update_runtime_status() -> void:
 	var executable := gddelta_executable_path.strip_edges()
