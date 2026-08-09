@@ -41,6 +41,9 @@ STARTED_WATCH_PROCESS_WITH_PID,Started watch process with pid %d,PID %d로 감�
 FAILED_TO_FIND_RUNNABLE_GAME_EXECUTABLE_IN_SANDBOX,Failed to find a runnable game executable in sandbox.,샌드박스에서 실행 가능한 게임 실행 파일을 찾지 못했습니다.
 FAILED_TO_START_SANDBOX_GAME_PROCESS,Failed to start sandbox game process.,샌드박스 게임 프로세스를 시작하지 못했습니다.
 STARTED_SANDBOX_GAME_WITH_PID,Started sandbox game with pid %d,PID %d로 샌드박스 게임 프로세스를 시작했습니다.
+GDDELTA_COMMAND_ALREADY_RUNNING,A gddelta command is already running.,이미 실행 중인 gddelta 명령이 있습니다.
+GDDELTA_COMMAND_STARTED,Started gddelta command.,gddelta 명령을 시작했습니다.
+FAILED_TO_START_GDDELTA_COMMAND_THREAD,Failed to start background gddelta command thread.,백그라운드 gddelta 명령 스레드를 시작하지 못했습니다.
 NO_OUTPUT,(no output),(출력 없음)
 EXIT_CODE,Exit code: %d,종료 코드: %d
 FIELD_IS_REQUIRED,%s is required.,%s 값은 필수입니다.

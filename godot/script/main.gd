@@ -14,6 +14,9 @@ var watch_pid := -1
 var watch_log_path := ""
 var watch_log_position := 0
 var watch_log_poll_accumulator := 0.0
+var command_thread: Thread = null
+var command_running := false
+var command_completion: Callable = Callable()
 
 func _ready() -> void:
 	gddelta_executable_path = _default_gddelta_path()
@@ -25,6 +28,8 @@ func _exit_tree() -> void:
 	stop_watch_process()
 
 func _process(delta: float) -> void:
+	_poll_command_thread()
+
 	if(watch_pid == -1): return;
 
 	if(!OS.is_process_running(watch_pid)):
@@ -49,22 +54,35 @@ func is_advanced_enabled() -> bool:
 func is_watch_running() -> bool:
 	return watch_pid != -1
 
-func run_gddelta(args: Array) -> int:
+func is_command_running() -> bool:
+	return command_running
+
+func run_gddelta(args: Array, completion: Callable = Callable()) -> int:
+	if(command_running):
+		append_log(tr("GDDELTA_COMMAND_ALREADY_RUNNING"))
+		return ERR_BUSY
+
 	var executable := gddelta_executable_path.strip_edges()
 	if(executable.is_empty()):
 		append_log(tr("GDDELTA_EXECUTABLE_PATH_IS_EMPTY"))
 		return ERR_FILE_NOT_FOUND
 
-	var output: Array = []
 	append_log("> " + executable + " " + " ".join(args))
-	var exit_code := OS.execute(executable, PackedStringArray(args), output, true, false)
-	if(output.is_empty()):
-		append_log(tr("NO_OUTPUT"))
-	else:
-		for line in output:
-			append_log(str(line))
-	append_log(tr("EXIT_CODE") % exit_code)
-	return exit_code
+	append_log(tr("GDDELTA_COMMAND_STARTED"))
+	command_thread = Thread.new()
+	command_running = true
+	command_completion = completion
+	_set_command_controls_enabled(false)
+	var error := command_thread.start(_run_gddelta_worker.bind(executable, PackedStringArray(args)))
+	if(error != OK):
+		command_thread = null
+		command_running = false
+		command_completion = Callable()
+		_set_command_controls_enabled(true)
+		append_log(tr("FAILED_TO_START_GDDELTA_COMMAND_THREAD"))
+		return error
+
+	return OK
 
 func append_log(message: String) -> void:
 	log_output.text += message + "\n"
@@ -289,3 +307,58 @@ func _resolve_sandbox_executable(base_path: String, sandbox_path: String) -> Str
 
 func _emit_watch_state_changed() -> void:
 	watch_state_changed.emit(watch_pid != -1)
+
+func _run_gddelta_worker(executable: String, args: PackedStringArray) -> Dictionary:
+	var output: Array = []
+	var exit_code := OS.execute(executable, args, output, true, false)
+	return {
+		"exit_code": exit_code,
+		"output": output,
+	}
+
+func _poll_command_thread() -> void:
+	if(command_thread == null || !command_running): return;
+	if(command_thread.is_alive()): return;
+
+	var result: Variant = command_thread.wait_to_finish()
+	command_thread = null
+	command_running = false
+	_set_command_controls_enabled(true)
+
+	var output: Array = []
+	var exit_code := ERR_BUG
+	if(result is Dictionary):
+		output = result.get("output", [])
+		exit_code = int(result.get("exit_code", ERR_BUG))
+
+	if(output.is_empty()):
+		append_log(tr("NO_OUTPUT"))
+	else:
+		for line in output:
+			append_log(str(line))
+	append_log(tr("EXIT_CODE") % exit_code)
+
+	var completion := command_completion
+	command_completion = Callable()
+	if(completion.is_valid()):
+		completion.call(exit_code)
+
+func _set_command_controls_enabled(enabled: bool) -> void:
+	advanced_toggle.disabled = !enabled
+	_set_control_tree_enabled(tabs, enabled)
+
+	var tab_bar := tabs.get_tab_bar()
+	if(tab_bar != null):
+		for tab_index in tabs.get_tab_count():
+			tab_bar.set_tab_disabled(tab_index, !enabled)
+
+func _set_control_tree_enabled(node: Node, enabled: bool) -> void:
+	for child in node.get_children():
+		if(child is Button):
+			child.disabled = !enabled
+		elif(child is CheckBox):
+			child.disabled = !enabled
+		elif(child is LineEdit):
+			child.editable = enabled
+
+		_set_control_tree_enabled(child, enabled)

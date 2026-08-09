@@ -92,15 +92,19 @@ void CliCommands::compose_pck(
 ) {
     const auto resolved_base = support_.resolve_base_input(base_pck);
     if(std::filesystem::is_directory(patch_pck)) {
+        std::cout << "[compose 1/2] Preparing project patch files\n";
         gddelta::patch::RuntimePatchResolver(patch_pck).warn_if_runtime_is_stale();
         const auto input_paths = support_.collect_project_source_inputs(patch_pck);
         const auto prepared = support_.prepare_runtime_patch_files(base_pck, patch_pck, input_paths, false);
+        std::cout << "[compose 2/2] Merging project patch files into output\n";
         support_.compose_pck_from_project_files(base_pck, prepared.files, output_pck);
     } else {
+        std::cout << "[compose 1/2] Preparing base and patch packs\n";
         const auto options = support_.build_pack_options_from_base(base_pck);
         const auto temp_base = support_.create_temporary_base_copy(base_pck);
         gddelta::patch::MergedPackBuilder builder;
         try {
+            std::cout << "[compose 2/2] Merging patch pack into output\n";
             builder.build_merged_pack(temp_base, patch_pck, output_pck, options);
         } catch (...) {
             std::error_code ec;
@@ -184,10 +188,12 @@ void CliCommands::apply_pck_in_place(
     const std::filesystem::path& base_pck,
     const std::filesystem::path& patch_pck
 ) {
+    std::cout << "[1/3] Building merged output from base and patch\n";
     const auto resolved_base = support_.resolve_base_input(base_pck);
     const auto temp_output = resolved_base.pack_path.parent_path() / (resolved_base.pack_path.stem().string() + ".apply.tmp" + resolved_base.pack_path.extension().string());
     compose_pck(base_pck, patch_pck, temp_output);
 
+    std::cout << "[2/3] Replacing base file with merged output\n";
     std::error_code ec;
     std::filesystem::remove(resolved_base.pack_path, ec);
     ec.clear();
@@ -198,7 +204,7 @@ void CliCommands::apply_pck_in_place(
     }
 
     std::cout
-    << "Applied patch " << patch_pck
+    << "[3/3] Applied patch " << patch_pck
     << " into base " << base_pck << "\n";
 }
 
@@ -208,6 +214,7 @@ void CliCommands::apply_gdmod(
     const std::optional<std::filesystem::path>& sandbox_dir
 ) {
     gddelta::patch::GdmodPackage package;
+    std::cout << "[1/4] Reading gdmod manifest\n";
     const auto manifest = package.read_manifest(gdmod_path);
     const auto resolved_base = support_.resolve_base_input(base_pck);
     const auto temp_patch_path = resolved_base.pack_path.parent_path() / (gdmod_path.stem().string() + ".apply.tmp.pck");
@@ -223,6 +230,7 @@ void CliCommands::apply_gdmod(
         << ", but requested base is " << resolved_base.pack_path.filename().string() << "\n";
     }
 
+    std::cout << "[2/4] Recovering patch payload from gdmod\n";
     if(manifest.legacy_plain_payload) {
         package.extract_patch_pck(gdmod_path, temp_patch_path);
     } else {
@@ -230,8 +238,10 @@ void CliCommands::apply_gdmod(
     }
     try {
         if(sandbox_dir.has_value()) {
+            std::cout << "[3/4] Building sandbox output from recovered patch\n";
             build_dev_sandbox_from_pck(base_pck, temp_patch_path, *sandbox_dir);
         } else {
+            std::cout << "[3/4] Applying recovered patch into base game\n";
             apply_pck_in_place(base_pck, temp_patch_path);
         }
     } catch(...) {
@@ -240,6 +250,7 @@ void CliCommands::apply_gdmod(
     }
 
     remove_if_exists(temp_patch_path);
+    std::cout << "[4/4] Finished applying gdmod\n";
 }
 
 void CliCommands::watch_dev_sandbox_from_patch_pck(

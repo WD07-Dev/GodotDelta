@@ -82,17 +82,22 @@ void CliCommands::build_patch_pck_from_inputs(
     const std::filesystem::path& output_pck,
     const std::vector<std::string>& input_paths
 ) {
+    std::cout << "[1/3] Preparing runtime patch files\n";
     const auto options = support_.build_pack_options_from_base(base_pck);
     auto prepared = support_.prepare_runtime_patch_files(base_pck, project_dir, input_paths, true);
     if(prepared.files.empty()) {
         throw std::runtime_error("No runtime-related files were found for the requested paths.");
     }
 
+    std::cout
+    << "[2/3] Writing patch PCK with "
+    << prepared.files.size()
+    << " entries\n";
     gddelta::pck::PckWriter writer;
     writer.write_files(prepared.files, output_pck, options);
 
     std::cout
-    << "Created runtime patch PCK " << output_pck
+    << "[3/3] Created runtime patch PCK " << output_pck
     << " with " << prepared.files.size() << " runtime-related entries\n";
 }
 
@@ -101,6 +106,7 @@ void CliCommands::build_patch_pck_auto(
     const std::filesystem::path& project_dir,
     const std::filesystem::path& output_pck
 ) {
+    std::cout << "[1/2] Scanning project for changed files\n";
     const auto temp_base = support_.create_temporary_base_copy(base_pck);
     std::vector<std::string> input_paths;
     {
@@ -116,6 +122,7 @@ void CliCommands::build_patch_pck_auto(
     }
 
     support_.print_rebuild_paths("Auto-detected patch inputs", input_paths);
+    std::cout << "[2/2] Building runtime patch PCK\n";
     build_patch_pck_from_inputs(base_pck, project_dir, output_pck, input_paths);
 }
 
@@ -124,6 +131,7 @@ void CliCommands::build_gdmod(
     const std::filesystem::path& project_dir,
     const std::filesystem::path& output_path
 ) {
+    std::cout << "[1/4] Reading base pack and scanning project changes\n";
     const auto resolved_base = support_.resolve_base_input(base_pck);
     const auto options = support_.build_pack_options_from_base(base_pck);
     const gddelta::patch::RuntimePatchResolver resolver(project_dir);
@@ -134,6 +142,7 @@ void CliCommands::build_gdmod(
     }
 
     support_.print_rebuild_paths("Auto-detected patch inputs", input_paths);
+    std::cout << "[2/4] Preparing runtime patch payload\n";
     auto prepared = support_.prepare_runtime_patch_files(base_pck, project_dir, input_paths, true);
     std::size_t threshold_chunk_slot_count = 0;
 
@@ -152,11 +161,15 @@ void CliCommands::build_gdmod(
     manifest.threshold_chunks = gddelta::patch::GdmodPackage::build_default_threshold_chunk_binding(resolved_base.pack_path);
     threshold_chunk_slot_count = manifest.threshold_chunks.slots.size();
 
+    std::cout
+    << "[3/4] Encrypting payload and writing gdmod package"
+    << " (" << prepared.files.size() << " entries, "
+    << threshold_chunk_slot_count << " threshold slots)\n";
     gddelta::patch::GdmodPackage package;
     package.write(resolved_base.pack_path, output_path, prepared.files, options, manifest);
 
     std::cout
-    << "Created gdmod " << output_path
+    << "[4/4] Created gdmod " << output_path
     << " with " << prepared.files.size() << " runtime-related entries"
     << " and " << threshold_chunk_slot_count << " threshold chunk slots\n";
 }
