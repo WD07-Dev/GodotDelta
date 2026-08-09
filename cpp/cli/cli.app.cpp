@@ -30,8 +30,7 @@ void CliApplication::print_usage() {
     << "\n"
     << "  Distribution:\n"
     << "  gddelta make <base.pck|base.exe> <project_dir> <output.gdmod>\n"
-    << "  gddelta apply-pck <base.pck|base.exe> <patch.pck> [sandbox_dir]\n"
-    << "  gddelta apply <base.pck|base.exe> <input.gdmod> [sandbox_dir]\n"
+    << "  gddelta apply <base.pck|base.exe> <input.pck|input.gdmod> [sandbox_dir]\n"
     << "\n"
     << "  Development:\n"
     << "  gddelta watch-dev-build-patch <base.pck|base.exe> <project_dir> <patch.pck> <sandbox_dir> [interval_ms] [--log-file path]\n"
@@ -44,10 +43,6 @@ void CliApplication::print_usage() {
     << "  gddelta diff <base_dir> <modified_dir>\n"
     << "  gddelta patch <base_dir> <modified_dir> <output.pck>\n"
     << "  gddelta make-pck <base.pck|base.exe> <project_dir> <output.pck>\n"
-    << "  gddelta runtime-patch <base.pck|base.exe> <base_dir> <modified_dir> <output.pck>\n"
-    << "  gddelta trace-runtime <project_dir> <relative_path> [more_paths...]\n"
-    << "  gddelta runtime-patch-files <base.pck|base.exe> <project_dir> <output.pck> <relative_path> [more_paths...]\n"
-    << "  gddelta watch-runtime-patch <base.pck|base.exe> <project_dir> <output.pck> [interval_ms] [--log-file path]\n"
     << "  gddelta compose <base.pck|base.exe> <patch.pck|project_dir> <output.pck|output.exe>\n";
 }
 
@@ -129,12 +124,14 @@ int CliApplication::run_command(std::string_view command, int argc, char **argv)
         return 0;
     }
 
+    // Legacy advanced alias kept for compatibility.
     if(command == "runtime-patch") {
         if(!require_arg_count(argc, 6)) return 1;
         commands_.build_patch_pck_from_dirs(argv[2], argv[3], argv[4], argv[5]);
         return 0;
     }
 
+    // Legacy advanced alias kept for compatibility.
     if(command == "trace-runtime") {
         if(!require_arg_count(argc, 4)) return 1;
         commands_.trace_runtime_paths(argv[2], collect_input_paths(3, argc, argv));
@@ -153,12 +150,14 @@ int CliApplication::run_command(std::string_view command, int argc, char **argv)
         return 0;
     }
 
+    // Legacy advanced alias kept for compatibility.
     if(command == "runtime-patch-files") {
         if(!require_arg_count(argc, 6)) return 1;
         commands_.build_patch_pck_from_inputs(argv[2], argv[3], argv[4], collect_input_paths(5, argc, argv));
         return 0;
     }
 
+    // Legacy advanced alias kept for compatibility.
     if(command == "watch-runtime-patch") {
         if(!require_arg_count(argc, 5)) return 1;
         const auto options = parse_watch_options(argc, argv, 5);
@@ -166,7 +165,7 @@ int CliApplication::run_command(std::string_view command, int argc, char **argv)
         return 0;
     }
 
-    if(command == "dev-build-patch" || command == "apply-pck") {
+    if(command == "dev-build-patch") {
         if(!require_arg_count(argc, 4)) return 1;
         if(argc >= 5) {
             commands_.build_dev_sandbox_from_pck(argv[2], argv[3], argv[4]);
@@ -178,10 +177,20 @@ int CliApplication::run_command(std::string_view command, int argc, char **argv)
 
     if(command == "apply") {
         if(!require_arg_count(argc, 4)) return 1;
-        if(argc >= 5) {
-            commands_.apply_gdmod(argv[2], argv[3], std::filesystem::path(argv[4]));
+        const auto input_path = std::filesystem::path(argv[3]);
+        const auto is_gdmod_input = input_path.extension() == ".gdmod";
+        if(is_gdmod_input) {
+            if(argc >= 5) {
+                commands_.apply_gdmod(argv[2], argv[3], std::filesystem::path(argv[4]));
+            } else {
+                commands_.apply_gdmod(argv[2], argv[3], std::nullopt);
+            }
         } else {
-            commands_.apply_gdmod(argv[2], argv[3], std::nullopt);
+            if(argc >= 5) {
+                commands_.build_dev_sandbox_from_pck(argv[2], argv[3], argv[4]);
+            } else {
+                commands_.apply_pck_in_place(argv[2], argv[3]);
+            }
         }
         return 0;
     }

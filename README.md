@@ -3,7 +3,7 @@
 GodotDelta is a Godot-focused patching tool for `Godot 4.x` games.
 
 It is designed for modding and patch workflows where you want to:
-- build a small patch PCK from a Godot project
+- build a small patch PCK or `gdmod` package from a Godot project
 - apply that patch to a base game
 - test changes in a sandbox without replacing the original game
 - rebuild patches continuously during development
@@ -27,9 +27,9 @@ In practice, this makes it more useful for Godot modding than a normal file delt
 
 ## Main workflows
 
-### 1. Make a distribution patch
+### 1. Make a distribution package
 
-Build a patch PCK from a base game and a modified Godot project:
+Build either a `gdmod` package or a patch PCK from a base game and a modified Godot project:
 
 ```bash
 gddelta make-pck <base.pck|base.exe> <project_dir> <output.pck>
@@ -42,13 +42,13 @@ Example:
 gddelta make-pck game.exe my_mod_project rom_battle_patch.pck
 ```
 
-This command scans the project scope, detects changed inputs, and writes a patch PCK.
+`make-pck` scans the project scope, detects changed inputs, and writes a patch PCK.
 
 `make` does the same runtime scan, but writes a `gdmod` package with an internal manifest so it can be applied later by GodotDelta.
 
-### 2. Apply a patch
+### 2. Apply a package
 
-Apply a patch directly into the base game:
+Apply either package format directly into the base game:
 
 ```bash
 gddelta apply-pck <base.pck|base.exe> <patch.pck>
@@ -70,6 +70,7 @@ gddelta apply-pck game.exe rom_battle_patch.pck output/dev-runtime
 
 Rules:
 - `apply-pck` without `sandbox_dir` modifies the base game
+- `apply` without `sandbox_dir` modifies the base game using a `gdmod`
 - other dev/watch commands are intended to work through sandbox output
 
 ### 3. Dev build
@@ -139,11 +140,28 @@ Script/**
 +addons/custom_runtime/**
 !addons/unused/**
 ```
+
+## GDRETools Integration
+
+GodotDelta uses [GDRETools](https://github.com/GDRETools/gdsdecomp) for the parts where accurate Godot package/script handling matters most.
+
+Current delegation boundary:
+- `inspect`: GDRETools lists files and pack metadata
+- project-file based `compose`: GDRETools reads the base pack and applies changed files
+- GDScript compilation for patched `.gd` files: GDRETools compiles matching `.gdc` output when the base pack uses bytecode
+
+Still handled by GodotDelta itself:
+- workspace diffing and `.gddeltainclude` scanning
+- runtime dependency expansion for patch inputs
+- patch/gdmod packaging flow selection
+- sandbox building and watch-mode orchestration
+
+This split is intentional: GDRETools handles low-level Godot pack/script behavior, while GodotDelta handles mod workflow logic.
 ## Important notes
 
 - For non-embedded `.exe` inputs, GodotDelta tries to use a sibling `.pck` with the same stem.
 - Watch/dev flows are for testing and iteration, not final distribution.
-- `apply` is the command that intentionally replaces the original base when no sandbox directory is given.
+- `apply` and `apply-pck` intentionally replace the original base when no sandbox directory is given.
 
 ## Credits
 

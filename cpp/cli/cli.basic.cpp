@@ -12,6 +12,7 @@ CliCommands::CliCommands(cli_internal::CliSupport& support):
 }
 
 void CliCommands::inspect_pack(const std::filesystem::path& path) {
+    // File inspection is delegated to GDRETools because it tracks format/version quirks better.
     std::cout << support_.run_gdre_tools_command({
         "--headless",
         "--list-files=" + path.string(),

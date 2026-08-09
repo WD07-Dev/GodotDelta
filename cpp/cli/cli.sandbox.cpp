@@ -209,7 +209,11 @@ void CliCommands::apply_gdmod(
         << ", but requested base is " << resolved_base.pack_path.filename().string() << "\n";
     }
 
-    package.extract_patch_pck(gdmod_path, temp_patch_path);
+    if(manifest.legacy_plain_payload) {
+        package.extract_patch_pck(gdmod_path, temp_patch_path);
+    } else {
+        package.extract_protected_patch_pck(base_pck, gdmod_path, temp_patch_path);
+    }
     try {
         if(sandbox_dir.has_value()) {
             build_dev_sandbox_from_pck(base_pck, temp_patch_path, *sandbox_dir);

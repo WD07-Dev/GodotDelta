@@ -163,13 +163,15 @@ void CliCommands::build_gdmod(
     manifest.engine_minor = options.engine_minor;
     manifest.engine_patch = options.engine_patch;
     manifest.entry_count = files.size();
+    manifest.threshold_chunks = gddelta::patch::GdmodPackage::build_default_threshold_chunk_binding(base_pck);
 
     gddelta::patch::GdmodPackage package;
-    package.write(output_path, files, options, manifest);
+    package.write(base_pck, output_path, files, options, manifest);
 
     std::cout
     << "Created gdmod " << output_path
-    << " with " << files.size() << " runtime-related entries\n";
+    << " with " << files.size() << " runtime-related entries"
+    << " and " << manifest.threshold_chunks.slots.size() << " threshold chunk slots\n";
 }
 
 void CliCommands::watch_patch_pck(

@@ -634,6 +634,7 @@ void CliSupport::compose_pck_from_project_files(
     const std::vector<gddelta::pck::PckWriteFile>& files,
     const std::filesystem::path& output_path
 ) const {
+    // For project-file based compose, let GDRETools read the base pack and patch files directly.
     if(files.empty()) {
         throw std::runtime_error("No files were provided for GDRETools patching.");
     }

@@ -93,7 +93,7 @@ func _on_apply_pressed() -> void:
 	])): return;
 
 	run_gddelta([
-		"apply-pck",
+		"apply",
 		base_path_edit.text,
 		patch_path_edit.text,
 		apply_output_path_edit.text,
