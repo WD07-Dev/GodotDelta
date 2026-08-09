@@ -1,6 +1,9 @@
 key,en,ko
 APP_SUBHEADER,Patch and apply Godot 4.x projects with the packaged gddelta runtime.,패키지된 gddelta 런타임으로 Godot 4.x 프로젝트를 패치하고 적용합니다.
 RUNTIME_STATUS_RESOLVING,gddelta: resolving...,gddelta: 확인 중...
+RUNTIME_STATUS_READY,gddelta: %s,gddelta: %s
+RUNTIME_STATUS_MISSING,gddelta executable was not found.,gddelta 실행 파일을 찾지 못했습니다.
+RUNTIME_STATUS_MISSING_AT,gddelta executable was not found at: %s,gddelta 실행 파일을 찾지 못했습니다: %s
 ENABLE_ADVANCED_FEATURES,Enable advanced features,고급 기능 사용
 BASE_PCK_EXE,Base PCK / EXE,기본 PCK / EXE
 PLACEHOLDER_BASE_PATH,C:/path/to/game.pck or game.exe,C:/경로/게임.pck 또는 game.exe
@@ -44,3 +47,4 @@ PATH_TARGET_IS_MISSING,Path target is missing.,경로 대상이 없습니다.
 FAILED_TO_STOP_WATCH_PROCESS_WITH_PID,Failed to stop watch process with pid %d,PID %d 감시 프로세스를 중지하지 못했습니다.
 STOPPED_WATCH_PROCESS_WITH_PID,Stopped watch process with pid %d,PID %d 감시 프로세스를 중지했습니다.
 FAILED_TO_PREPARE_GDRE_TOOLS,Failed to prepare GDRE tools.,GDRE 도구 준비에 실패했습니다.
+FAILED_TO_FIND_GDDELTA_EXECUTABLE,Failed to find the gddelta executable.,gddelta 실행 파일을 찾지 못했습니다.
