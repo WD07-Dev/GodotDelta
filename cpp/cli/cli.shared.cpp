@@ -39,7 +39,6 @@ extern char **environ;
 using namespace cli_internal;
 
 namespace {
-
 constexpr const char *kGdreToolsWindowsUrl = "https://github.com/GDRETools/gdsdecomp/releases/download/v2.6.3/GDRE_tools-v2.6.3-windows.zip";
 constexpr const char *kGdreToolsLinuxUrl = "https://github.com/GDRETools/gdsdecomp/releases/download/v2.6.3/GDRE_tools-v2.6.3-linux.zip";
 constexpr const char *kGdreExtractDirectoryName = ".gdre_extract";
@@ -161,20 +160,13 @@ void copy_directory_contents(const std::filesystem::path& source_dir, const std:
             }
             continue;
         }
-
-        if(!entry.is_regular_file()) {
-            continue;
-        }
+        if(!entry.is_regular_file()) continue;
 
         std::filesystem::create_directories(destination.parent_path(), ec);
-        if(ec) {
-            throw std::runtime_error("Failed to prepare extracted path: " + destination.parent_path().string());
-        }
+        if(ec) throw std::runtime_error("Failed to prepare extracted path: " + destination.parent_path().string());
 
         std::filesystem::copy_file(entry.path(), destination, std::filesystem::copy_options::overwrite_existing, ec);
-        if(ec) {
-            throw std::runtime_error("Failed to copy extracted file: " + entry.path().string());
-        }
+        if(ec) throw std::runtime_error("Failed to copy extracted file: " + entry.path().string());
     }
 }
 
@@ -272,10 +264,7 @@ void extract_zip_with_minizip(const std::filesystem::path& archive_path, const s
 
         const auto relative_path = std::filesystem::path(file_name);
         const auto destination = output_dir / relative_path;
-
-        if(relative_path.empty()) {
-            continue;
-        }
+        if(relative_path.empty()) continue;
 
         if(file_name[std::strlen(file_name) - 1] == '/') {
             std::filesystem::create_directories(destination);
@@ -304,9 +293,7 @@ void extract_zip_with_minizip(const std::filesystem::path& archive_path, const s
                 close_zip();
                 throw std::runtime_error("Failed to extract archive entry: " + relative_path.string());
             }
-            if(bytes_read == 0) {
-                break;
-            }
+            if(bytes_read == 0) break;
             output.write(buffer.data(), bytes_read);
         }
 
@@ -614,10 +601,7 @@ void CliSupport::compile_gdscript_files(
     const std::vector<std::filesystem::path>& source_files,
     const std::filesystem::path& output_dir
 ) const {
-    if(source_files.empty()) {
-        return;
-    }
-
+    if(source_files.empty()) return;
     std::vector<std::string> args = {
         "--headless",
         "--bytecode=" + detect_base_engine_version(base_pck),
@@ -816,10 +800,7 @@ void CliSupport::copy_runtime_support_files(
     const auto base_dir = base_path.parent_path();
     for(const auto& entry : std::filesystem::recursive_directory_iterator(base_dir)) {
         const auto candidate = entry.path();
-        if(candidate == base_path) {
-            continue;
-        }
-
+        if(candidate == base_path) continue;
         const auto relative_path = std::filesystem::relative(candidate, base_dir);
         const auto destination = sandbox_dir / relative_path;
         std::error_code ec;

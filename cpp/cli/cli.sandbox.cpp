@@ -15,10 +15,7 @@ namespace {
     class ScopedLogRedirect {
         public:
             explicit ScopedLogRedirect(const std::optional<std::filesystem::path>& log_file_path) {
-                if(!log_file_path.has_value()) {
-                    return;
-                }
-
+                if(!log_file_path.has_value()) return;
                 std::filesystem::create_directories(log_file_path->parent_path());
                 stream_.open(*log_file_path, std::ios::out | std::ios::trunc);
                 if(!stream_) {
@@ -57,10 +54,7 @@ namespace {
     std::vector<std::string> collect_project_source_inputs(const std::filesystem::path& project_dir) {
         std::vector<std::string> input_paths;
         for(const auto& entry : std::filesystem::recursive_directory_iterator(project_dir)) {
-            if(!entry.is_regular_file()) {
-                continue;
-            }
-
+            if(!entry.is_regular_file()) continue;
             const auto relative_path = std::filesystem::relative(entry.path(), project_dir);
             if(!gddelta::patch::RuntimePatchResolver::is_project_source_candidate(relative_path)) {
                 continue;

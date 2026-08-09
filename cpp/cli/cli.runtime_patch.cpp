@@ -13,10 +13,7 @@ namespace {
     class ScopedLogRedirect {
         public:
             explicit ScopedLogRedirect(const std::optional<std::filesystem::path>& log_file_path) {
-                if(!log_file_path.has_value()) {
-                    return;
-                }
-
+                if(!log_file_path.has_value()) return;
                 std::filesystem::create_directories(log_file_path->parent_path());
                 stream_.open(*log_file_path, std::ios::out | std::ios::trunc);
                 if(!stream_) {
@@ -113,11 +110,10 @@ void CliCommands::build_patch_pck_auto(
         gddelta::pck::PckReader base_reader;
         base_reader.open(temp_base);
         if(base_reader.header().engine_major < 4) {
-            version_error =
-                "Godot 3.x is not supported. Base pack engine version is " +
-                std::to_string(base_reader.header().engine_major) + "." +
-                std::to_string(base_reader.header().engine_minor) + "." +
-                std::to_string(base_reader.header().engine_patch);
+            version_error = "Godot 3.x is not supported. Base pack engine version is " +
+            std::to_string(base_reader.header().engine_major) + "." +
+            std::to_string(base_reader.header().engine_minor) + "." +
+            std::to_string(base_reader.header().engine_patch);
         } else {
             const gddelta::patch::RuntimePatchResolver resolver(project_dir);
             input_paths = resolver.collect_auto_input_paths(base_reader);

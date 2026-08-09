@@ -8,10 +8,15 @@
 #include<cstdint>
 #include<fstream>
 #include<iomanip>
+#ifdef _WIN32
+#include<windows.h>
+#include<bcrypt.h>
+#else
 #include<openssl/evp.h>
 #include<openssl/hmac.h>
 #include<openssl/kdf.h>
 #include<openssl/rand.h>
+#endif
 #include<optional>
 #include<span>
 #include<sstream>
@@ -150,13 +155,46 @@ std::uint32_t read_u32_le(const ByteVector& input, std::size_t offset) {
 
 ByteVector random_bytes(std::size_t size) {
     ByteVector bytes(size);
+#ifdef _WIN32
+    if(BCryptGenRandom(nullptr, bytes.data(), static_cast<ULONG>(bytes.size()), BCRYPT_USE_SYSTEM_PREFERRED_RNG) < 0) {
+        throw std::runtime_error("Failed to generate cryptographic random bytes.");
+    }
+#else
     if(RAND_bytes(bytes.data(), static_cast<int>(bytes.size())) != 1) {
         throw std::runtime_error("Failed to generate cryptographic random bytes.");
     }
+#endif
     return bytes;
 }
 
 ByteVector sha256_bytes(std::string_view input) {
+#ifdef _WIN32
+    BCRYPT_ALG_HANDLE algorithm = nullptr;
+    BCRYPT_HASH_HANDLE hash = nullptr;
+    DWORD object_size = 0;
+    DWORD data_size = 0;
+    if(BCryptOpenAlgorithmProvider(&algorithm, BCRYPT_SHA256_ALGORITHM, nullptr, 0) < 0) {
+        throw std::runtime_error("Failed to open SHA-256 algorithm provider.");
+    }
+    if(BCryptGetProperty(algorithm, BCRYPT_OBJECT_LENGTH, reinterpret_cast<PUCHAR>(&object_size), sizeof(object_size), &data_size, 0) < 0) {
+        BCryptCloseAlgorithmProvider(algorithm, 0);
+        throw std::runtime_error("Failed to query SHA-256 object size.");
+    }
+    ByteVector hash_object(object_size);
+    ByteVector digest(32);
+    if(BCryptCreateHash(algorithm, &hash, hash_object.data(), static_cast<ULONG>(hash_object.size()), nullptr, 0, 0) < 0 ||
+        BCryptHashData(hash, reinterpret_cast<PUCHAR>(const_cast<char *>(input.data())), static_cast<ULONG>(input.size()), 0) < 0 ||
+        BCryptFinishHash(hash, digest.data(), static_cast<ULONG>(digest.size()), 0) < 0) {
+        if(hash != nullptr) {
+            BCryptDestroyHash(hash);
+        }
+        BCryptCloseAlgorithmProvider(algorithm, 0);
+        throw std::runtime_error("Failed to compute SHA-256 digest.");
+    }
+    BCryptDestroyHash(hash);
+    BCryptCloseAlgorithmProvider(algorithm, 0);
+    return digest;
+#else
     ByteVector digest(EVP_MD_size(EVP_sha256()));
     unsigned int digest_size = 0;
     if(EVP_Digest(
@@ -171,6 +209,7 @@ ByteVector sha256_bytes(std::string_view input) {
     }
     digest.resize(digest_size);
     return digest;
+#endif
 }
 
 ByteVector sha256_bytes(const ByteVector& input) {
@@ -180,12 +219,88 @@ ByteVector sha256_bytes(const ByteVector& input) {
     ));
 }
 
+ByteVector hmac_sha256(const ByteVector& key, std::span<const std::uint8_t> message) {
+#ifdef _WIN32
+    BCRYPT_ALG_HANDLE algorithm = nullptr;
+    BCRYPT_HASH_HANDLE hash = nullptr;
+    DWORD object_size = 0;
+    DWORD data_size = 0;
+    if(BCryptOpenAlgorithmProvider(&algorithm, BCRYPT_SHA256_ALGORITHM, nullptr, BCRYPT_ALG_HANDLE_HMAC_FLAG) < 0) {
+        throw std::runtime_error("Failed to open HMAC-SHA256 algorithm provider.");
+    }
+    if(BCryptGetProperty(algorithm, BCRYPT_OBJECT_LENGTH, reinterpret_cast<PUCHAR>(&object_size), sizeof(object_size), &data_size, 0) < 0) {
+        BCryptCloseAlgorithmProvider(algorithm, 0);
+        throw std::runtime_error("Failed to query HMAC-SHA256 object size.");
+    }
+    ByteVector hash_object(object_size);
+    ByteVector digest(32);
+    if(BCryptCreateHash(
+            algorithm,
+            &hash,
+            hash_object.data(),
+            static_cast<ULONG>(hash_object.size()),
+            const_cast<PUCHAR>(key.data()),
+            static_cast<ULONG>(key.size()),
+            0
+        ) < 0 ||
+        BCryptHashData(hash, const_cast<PUCHAR>(message.data()), static_cast<ULONG>(message.size()), 0) < 0 ||
+        BCryptFinishHash(hash, digest.data(), static_cast<ULONG>(digest.size()), 0) < 0) {
+        if(hash != nullptr) {
+            BCryptDestroyHash(hash);
+        }
+        BCryptCloseAlgorithmProvider(algorithm, 0);
+        throw std::runtime_error("Failed to compute HMAC-SHA256.");
+    }
+    BCryptDestroyHash(hash);
+    BCryptCloseAlgorithmProvider(algorithm, 0);
+    return digest;
+#else
+    unsigned int digest_size = 0;
+    ByteVector digest(EVP_MAX_MD_SIZE);
+    if(HMAC(
+            EVP_sha256(),
+            key.data(),
+            static_cast<int>(key.size()),
+            message.data(),
+            message.size(),
+            digest.data(),
+            &digest_size
+        ) == nullptr) {
+        throw std::runtime_error("Failed to compute HMAC-SHA256.");
+    }
+    digest.resize(digest_size);
+    return digest;
+#endif
+}
+
 ByteVector hkdf_sha256(
     const ByteVector& ikm,
     std::string_view salt,
     std::string_view info,
     std::size_t output_size
 ) {
+#ifdef _WIN32
+    ByteVector salt_bytes(salt.begin(), salt.end());
+    if(salt_bytes.empty()) {
+        salt_bytes.resize(32, 0);
+    }
+
+    const auto prk = hmac_sha256(salt_bytes, std::span<const std::uint8_t>(ikm.data(), ikm.size()));
+    ByteVector output;
+    output.reserve(output_size);
+    ByteVector previous;
+    std::uint8_t counter = 1;
+    while(output.size() < output_size) {
+        ByteVector block_input = previous;
+        block_input.insert(block_input.end(), info.begin(), info.end());
+        block_input.push_back(counter);
+        previous = hmac_sha256(prk, std::span<const std::uint8_t>(block_input.data(), block_input.size()));
+        const auto bytes_to_copy = std::min(previous.size(), output_size - output.size());
+        output.insert(output.end(), previous.begin(), previous.begin() + static_cast<std::ptrdiff_t>(bytes_to_copy));
+        ++counter;
+    }
+    return output;
+#else
     auto *context = EVP_PKEY_CTX_new_id(EVP_PKEY_HKDF, nullptr);
     if(context == nullptr) {
         throw std::runtime_error("Failed to create HKDF context.");
@@ -221,6 +336,7 @@ ByteVector hkdf_sha256(
     cleanup();
     output.resize(output_length);
     return output;
+#endif
 }
 
 ByteVector derive_chunk_key(const ByteVector& chunk_bytes) {
@@ -230,8 +346,69 @@ ByteVector derive_chunk_key(const ByteVector& chunk_bytes) {
 
 ByteVector encrypt_aes_256_gcm(const ByteVector& key, const ByteVector& plaintext) {
     const auto nonce = random_bytes(kGcmNonceSize);
-    ByteVector ciphertext(plaintext.size() + kGcmTagSize + 8);
+#ifdef _WIN32
+    BCRYPT_ALG_HANDLE algorithm = nullptr;
+    BCRYPT_KEY_HANDLE crypto_key = nullptr;
+    DWORD object_size = 0;
+    DWORD data_size = 0;
+    if(BCryptOpenAlgorithmProvider(&algorithm, BCRYPT_AES_ALGORITHM, nullptr, 0) < 0) {
+        throw std::runtime_error("Failed to open AES algorithm provider.");
+    }
+    if(BCryptSetProperty(
+            algorithm,
+            BCRYPT_CHAINING_MODE,
+            reinterpret_cast<PUCHAR>(const_cast<wchar_t *>(BCRYPT_CHAIN_MODE_GCM)),
+            sizeof(BCRYPT_CHAIN_MODE_GCM),
+            0
+        ) < 0 ||
+        BCryptGetProperty(algorithm, BCRYPT_OBJECT_LENGTH, reinterpret_cast<PUCHAR>(&object_size), sizeof(object_size), &data_size, 0) < 0) {
+        BCryptCloseAlgorithmProvider(algorithm, 0);
+        throw std::runtime_error("Failed to configure AES-GCM provider.");
+    }
 
+    ByteVector key_object(object_size);
+    if(BCryptGenerateSymmetricKey(
+            algorithm,
+            &crypto_key,
+            key_object.data(),
+            static_cast<ULONG>(key_object.size()),
+            const_cast<PUCHAR>(key.data()),
+            static_cast<ULONG>(key.size()),
+            0
+        ) < 0) {
+        BCryptCloseAlgorithmProvider(algorithm, 0);
+        throw std::runtime_error("Failed to create AES-GCM key.");
+    }
+
+    ByteVector ciphertext(plaintext.size());
+    ByteVector tag(kGcmTagSize);
+    BCRYPT_AUTHENTICATED_CIPHER_MODE_INFO auth_info;
+    BCRYPT_INIT_AUTH_MODE_INFO(auth_info);
+    auth_info.pbNonce = const_cast<PUCHAR>(nonce.data());
+    auth_info.cbNonce = static_cast<ULONG>(nonce.size());
+    auth_info.pbTag = tag.data();
+    auth_info.cbTag = static_cast<ULONG>(tag.size());
+
+    ULONG ciphertext_size = 0;
+    const auto status = BCryptEncrypt(
+        crypto_key,
+        const_cast<PUCHAR>(plaintext.data()),
+        static_cast<ULONG>(plaintext.size()),
+        &auth_info,
+        nullptr,
+        0,
+        ciphertext.data(),
+        static_cast<ULONG>(ciphertext.size()),
+        &ciphertext_size,
+        0
+    );
+    BCryptDestroyKey(crypto_key);
+    BCryptCloseAlgorithmProvider(algorithm, 0);
+    if(status < 0) {
+        throw std::runtime_error("Failed to encrypt AES-GCM payload.");
+    }
+    ciphertext.resize(ciphertext_size);
+#else
     auto *context = EVP_CIPHER_CTX_new();
     if(context == nullptr) {
         throw std::runtime_error("Failed to create AES-GCM context.");
@@ -264,16 +441,18 @@ ByteVector encrypt_aes_256_gcm(const ByteVector& key, const ByteVector& plaintex
         throw std::runtime_error("Failed to extract AES-GCM tag.");
     }
     cleanup();
+    auto ciphertext = std::move(encrypted);
+#endif
 
     ByteVector blob;
     append_bytes(blob, "GDEM");
     append_u32_le(blob, kEncryptedBlobVersion);
     append_u32_le(blob, static_cast<std::uint32_t>(nonce.size()));
     append_u32_le(blob, static_cast<std::uint32_t>(tag.size()));
-    append_u32_le(blob, static_cast<std::uint32_t>(encrypted.size()));
+    append_u32_le(blob, static_cast<std::uint32_t>(ciphertext.size()));
     blob.insert(blob.end(), nonce.begin(), nonce.end());
     blob.insert(blob.end(), tag.begin(), tag.end());
-    blob.insert(blob.end(), encrypted.begin(), encrypted.end());
+    blob.insert(blob.end(), ciphertext.begin(), ciphertext.end());
     return blob;
 }
 
@@ -300,6 +479,69 @@ ByteVector decrypt_aes_256_gcm(const ByteVector& key, const ByteVector& blob) {
     const auto* tag = nonce + nonce_size;
     const auto* ciphertext = tag + tag_size;
 
+#ifdef _WIN32
+    BCRYPT_ALG_HANDLE algorithm = nullptr;
+    BCRYPT_KEY_HANDLE crypto_key = nullptr;
+    DWORD object_size = 0;
+    DWORD data_size = 0;
+    if(BCryptOpenAlgorithmProvider(&algorithm, BCRYPT_AES_ALGORITHM, nullptr, 0) < 0) {
+        throw std::runtime_error("Failed to open AES algorithm provider.");
+    }
+    if(BCryptSetProperty(
+            algorithm,
+            BCRYPT_CHAINING_MODE,
+            reinterpret_cast<PUCHAR>(const_cast<wchar_t *>(BCRYPT_CHAIN_MODE_GCM)),
+            sizeof(BCRYPT_CHAIN_MODE_GCM),
+            0
+        ) < 0 ||
+        BCryptGetProperty(algorithm, BCRYPT_OBJECT_LENGTH, reinterpret_cast<PUCHAR>(&object_size), sizeof(object_size), &data_size, 0) < 0) {
+        BCryptCloseAlgorithmProvider(algorithm, 0);
+        throw std::runtime_error("Failed to configure AES-GCM provider.");
+    }
+
+    ByteVector key_object(object_size);
+    if(BCryptGenerateSymmetricKey(
+            algorithm,
+            &crypto_key,
+            key_object.data(),
+            static_cast<ULONG>(key_object.size()),
+            const_cast<PUCHAR>(key.data()),
+            static_cast<ULONG>(key.size()),
+            0
+        ) < 0) {
+        BCryptCloseAlgorithmProvider(algorithm, 0);
+        throw std::runtime_error("Failed to create AES-GCM key.");
+    }
+
+    ByteVector plaintext(ciphertext_size);
+    BCRYPT_AUTHENTICATED_CIPHER_MODE_INFO auth_info;
+    BCRYPT_INIT_AUTH_MODE_INFO(auth_info);
+    auth_info.pbNonce = const_cast<PUCHAR>(nonce);
+    auth_info.cbNonce = nonce_size;
+    auth_info.pbTag = const_cast<PUCHAR>(tag);
+    auth_info.cbTag = tag_size;
+
+    ULONG plaintext_size = 0;
+    const auto status = BCryptDecrypt(
+        crypto_key,
+        const_cast<PUCHAR>(ciphertext),
+        ciphertext_size,
+        &auth_info,
+        nullptr,
+        0,
+        plaintext.data(),
+        static_cast<ULONG>(plaintext.size()),
+        &plaintext_size,
+        0
+    );
+    BCryptDestroyKey(crypto_key);
+    BCryptCloseAlgorithmProvider(algorithm, 0);
+    if(status < 0) {
+        throw std::runtime_error("AES-GCM authentication failed.");
+    }
+    plaintext.resize(plaintext_size);
+    return plaintext;
+#else
     auto *context = EVP_CIPHER_CTX_new();
     if(context == nullptr) {
         throw std::runtime_error("Failed to create AES-GCM context.");
@@ -333,6 +575,7 @@ ByteVector decrypt_aes_256_gcm(const ByteVector& key, const ByteVector& blob) {
     cleanup();
     plaintext.resize(total_length);
     return plaintext;
+#endif
 }
 
 std::array<std::uint8_t, 512> gf256_exp_table;
@@ -426,9 +669,7 @@ ByteVector combine_secret_shares(const std::vector<ByteVector>& shares, std::uin
             const auto xi = shares[share_index][0];
             std::uint8_t basis = 1;
             for(std::uint32_t other_index = 0; other_index < threshold; ++other_index) {
-                if(share_index == other_index) {
-                    continue;
-                }
+                if(share_index == other_index) continue;
                 const auto xj = shares[other_index][0];
                 basis = gf256_mul(basis, gf256_div(xj, static_cast<std::uint8_t>(xj ^ xi)));
             }
@@ -481,10 +722,7 @@ ByteVector read_chunk_from_base_pack(
 }
 
 bool is_low_entropy_chunk(std::span<const std::uint8_t> bytes) {
-    if(bytes.empty()) {
-        return true;
-    }
-
+    if(bytes.empty()) return true;
     std::array<bool, 256> seen{};
     std::size_t unique_count = 0;
     std::size_t longest_run = 1;
@@ -514,10 +752,7 @@ std::vector<GdmodThresholdChunkSlot> collect_cdc_chunk_slots(
     const GdmodThresholdChunkBinding& binding
 ) {
     std::vector<GdmodThresholdChunkSlot> slots;
-    if(entry_bytes.size() < binding.chunk_min_size) {
-        return slots;
-    }
-
+    if(entry_bytes.size() < binding.chunk_min_size) return slots;
     const auto min_size = static_cast<std::size_t>(binding.chunk_min_size);
     const auto avg_size = static_cast<std::size_t>(binding.chunk_avg_size);
     const auto max_size = static_cast<std::size_t>(binding.chunk_max_size);
@@ -529,14 +764,10 @@ std::vector<GdmodThresholdChunkSlot> collect_cdc_chunk_slots(
     for(std::size_t index = 0; index < entry_bytes.size(); ++index) {
         fingerprint = (fingerprint >> 1U) + gear[entry_bytes[index]];
         const auto chunk_size = index - start + 1;
-        if(chunk_size < min_size) {
-            continue;
-        }
+        if(chunk_size < min_size) continue;
 
         const auto reached_boundary = ((fingerprint & mask) == 0) || chunk_size >= max_size || index + 1 == entry_bytes.size();
-        if(!reached_boundary) {
-            continue;
-        }
+        if(!reached_boundary) continue;
 
         const auto actual_size = std::min<std::size_t>(chunk_size, entry_bytes.size() - start);
         const auto chunk_bytes = std::span<const std::uint8_t>(entry_bytes.data() + start, actual_size);
@@ -612,9 +843,7 @@ GdmodManifest parse_manifest_text(std::string_view text) {
 
     while(std::getline(input, line)) {
         const auto delimiter = line.find('=');
-        if(delimiter == std::string::npos) {
-            continue;
-        }
+        if(delimiter == std::string::npos) continue;
 
         const auto key = line.substr(0, delimiter);
         const auto value = line.substr(delimiter + 1);
@@ -693,7 +922,7 @@ GdmodManifest parse_manifest_text(std::string_view text) {
                 const auto normalized = to_lower_copy(source);
                 if(normalized == "pck") {
                     manifest.threshold_chunks.use_pck_source = true;
-                } else if(normalized == "executable") {
+                }else if(normalized == "executable") {
                     manifest.threshold_chunks.use_executable_source = true;
                 }
             }
@@ -708,10 +937,7 @@ GdmodManifest parse_manifest_text(std::string_view text) {
         const auto binding_prefix = std::string_view("binding_slot.");
         if(key.rfind(binding_prefix, 0) == 0) {
             const auto field_offset = key.find('.', binding_prefix.size());
-            if(field_offset == std::string::npos) {
-                continue;
-            }
-
+            if(field_offset == std::string::npos) continue;
             const auto index = static_cast<std::size_t>(std::stoull(key.substr(binding_prefix.size(), field_offset - binding_prefix.size())));
             if(index >= manifest.threshold_chunks.slots.size()) {
                 manifest.threshold_chunks.slots.resize(index + 1);
@@ -721,13 +947,13 @@ GdmodManifest parse_manifest_text(std::string_view text) {
             const auto field = key.substr(field_offset + 1);
             if(field == "id") {
                 slot.chunk_id = value;
-            } else if(field == "source_path") {
+            }else if(field == "source_path") {
                 slot.source_path = value;
-            } else if(field == "source_offset") {
+            }else if(field == "source_offset") {
                 slot.source_offset = static_cast<std::uint64_t>(std::stoull(value));
-            } else if(field == "size") {
+            }else if(field == "size") {
                 slot.size = static_cast<std::uint64_t>(std::stoull(value));
-            } else if(field == "share_pack_path") {
+            }else if(field == "share_pack_path") {
                 slot.share_pack_path = value;
             }
             continue;
@@ -754,10 +980,7 @@ GdmodThresholdChunkBinding build_default_threshold_chunk_binding_impl(const std:
     std::vector<std::vector<GdmodThresholdChunkSlot>> per_entry_slots;
     per_entry_slots.reserve(reader.entries().size());
     for(const auto& entry : reader.entries()) {
-        if(entry.size < binding.chunk_min_size) {
-            continue;
-        }
-
+        if(entry.size < binding.chunk_min_size) continue;
         auto entry_bytes = reader.read_entry_data(entry);
         auto slots = collect_cdc_chunk_slots(entry, entry_bytes, binding);
         if(!slots.empty()) {
@@ -770,21 +993,13 @@ GdmodThresholdChunkBinding build_default_threshold_chunk_binding_impl(const std:
     while(total_samples < binding.sample_count) {
         auto added_any = false;
         for(auto& slots : per_entry_slots) {
-            if(pass_index >= slots.size() || pass_index >= binding.max_samples_per_file) {
-                continue;
-            }
-
+            if(pass_index >= slots.size() || pass_index >= binding.max_samples_per_file) continue;
             binding.slots.push_back(std::move(slots[pass_index]));
             ++total_samples;
             added_any = true;
-            if(total_samples >= binding.sample_count) {
-                break;
-            }
+            if(total_samples >= binding.sample_count) break;
         }
-
-        if(!added_any) {
-            break;
-        }
+        if(!added_any) break;
         ++pass_index;
     }
 
@@ -936,10 +1151,7 @@ void GdmodPackage::extract_protected_patch_pck(
     recovered_shares.reserve(manifest.threshold_chunks.threshold);
     for(const auto& slot : manifest.threshold_chunks.slots) {
         const auto share_entry = reader.find_entry(slot.share_pack_path);
-        if(!share_entry.has_value()) {
-            continue;
-        }
-
+        if(!share_entry.has_value()) continue;
         try {
             const auto chunk_bytes = read_chunk_from_base_pack(base_pck, slot);
             const auto chunk_key = derive_chunk_key(chunk_bytes);

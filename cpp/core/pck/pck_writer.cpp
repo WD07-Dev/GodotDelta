@@ -125,10 +125,7 @@ namespace {
     }
 
     std::vector<IncludeRule> load_include_patterns_from_file(const std::filesystem::path& include_path) {
-        if(!std::filesystem::exists(include_path)) {
-            return {};
-        }
-
+        if(!std::filesystem::exists(include_path)) return {};
         std::ifstream input(include_path);
         if(!input) {
             throw std::runtime_error("Failed to open include file: " + include_path.string());
@@ -185,15 +182,10 @@ namespace {
         const std::string& path,
         const std::vector<IncludeRule>& patterns
     ) {
-        if(patterns.empty()) {
-            return true;
-        }
-
+        if(patterns.empty()) return true;
         auto matched_include = false;
         for(const auto& pattern : patterns) {
-            if(!std::regex_match(path, pattern.pattern)) {
-                continue;
-            }
+            if(!std::regex_match(path, pattern.pattern)) continue;
             if(pattern.mode == IncludeRuleMode::Exclude) {
                 return false;
             }
@@ -203,14 +195,10 @@ namespace {
     }
 
     bool should_skip_project_entry(const std::filesystem::path& relative_path) {
-        if(relative_path.empty()) {
-            return false;
-        }
+        if(relative_path.empty()) return false;
 
         const auto first = *relative_path.begin();
-        if(first == ".git" || first == "bin") {
-            return true;
-        }
+        if(first == ".git" || first == "bin") return true;
         const auto filename = relative_path.filename().generic_string();
         if(relative_path.parent_path().empty() &&
             !filename.empty() &&
@@ -248,10 +236,7 @@ namespace {
                 }
                 continue;
             }
-
-            if(!item.is_regular_file()) {
-                continue;
-            }
+            if(!item.is_regular_file()) continue;
 
             const auto pack_path = normalize_pack_path(relative_path);
             if(!matches_include_patterns(pack_path, include_patterns)) continue;
@@ -327,9 +312,7 @@ namespace {
         while(input) {
             input.read(buffer.data(), static_cast<std::streamsize>(buffer.size()));
             const auto count = input.gcount();
-            if(count <= 0) {
-                break;
-            }
+            if(count <= 0) break;
             output.write(buffer.data(), count);
             if(!output) {
                 throw std::runtime_error("Failed to write source file into PCK: " + source_path.string());
@@ -468,7 +451,7 @@ void PckWriter::write_files(
         output.seekp(static_cast<std::streamoff>(directory_offset), std::ios::beg);
 
         write_scalar<std::uint32_t>(output, static_cast<std::uint32_t>(entries.size()));
-        for (const auto& entry : entries) {
+        for(const auto& entry : entries) {
             const auto raw_length = static_cast<std::uint32_t>(entry.pack_path.size());
             const auto stored_length = static_cast<std::uint32_t>(align_u64(raw_length, 4));
             write_scalar<std::uint32_t>(output, stored_length);
@@ -479,7 +462,7 @@ void PckWriter::write_files(
             output.write(reinterpret_cast<const char *>(entry.md5.data()), static_cast<std::streamsize>(entry.md5.size()));
             write_scalar<std::uint32_t>(output, entry.flags);
         }
-    } else if(options.format_version == kPackFormatVersion2) {
+    }else if(options.format_version == kPackFormatVersion2) {
         std::vector<std::streampos> offset_positions;
         offset_positions.reserve(entries.size());
 

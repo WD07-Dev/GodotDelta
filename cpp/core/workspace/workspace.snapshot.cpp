@@ -52,9 +52,7 @@ WorkspaceSnapshot Workspace::build(const std::filesystem::path& root) const {
     snapshot.root = root;
 
     for(const auto entry : std::filesystem::recursive_directory_iterator(root)) {
-        if(!entry.is_regular_file()) {
-            continue;
-        }
+        if(!entry.is_regular_file()) continue;
 
         WorkspaceFile file;
         file.absolute_path = entry.path();
