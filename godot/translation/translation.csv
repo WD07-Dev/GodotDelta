@@ -43,3 +43,4 @@ FIELD_IS_REQUIRED,%s is required.,%s 값은 필수입니다.
 PATH_TARGET_IS_MISSING,Path target is missing.,경로 대상이 없습니다.
 FAILED_TO_STOP_WATCH_PROCESS_WITH_PID,Failed to stop watch process with pid %d,PID %d 감시 프로세스를 중지하지 못했습니다.
 STOPPED_WATCH_PROCESS_WITH_PID,Stopped watch process with pid %d,PID %d 감시 프로세스를 중지했습니다.
+FAILED_TO_PREPARE_GDRE_TOOLS,Failed to prepare GDRE tools.,GDRE 도구 준비에 실패했습니다.

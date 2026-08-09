@@ -106,6 +106,7 @@ Packaged builds include:
 - `gddelta(.exe)`: CLI
 - `GodotDelta(.exe/.x86_64)`: GUI
 - `default.gddeltainclude`
+- first launch automatically downloads GDRE tools next to `gddelta`
 
 You can start the GUI directly or from CLI:
 

@@ -33,6 +33,7 @@ func _ready() -> void:
 	gddelta_executable_path = _default_gddelta_path();
 	runtime_status_label.text = "gddelta: " + gddelta_executable_path;
 	_update_advanced_state();
+	_prepare_gdre_tools();
 
 
 func _exit_tree() -> void:
@@ -264,11 +265,28 @@ func _open_file_dialog(target: LineEdit, mode: FileDialog.FileMode, filters: Pac
 
 func _default_gddelta_path() -> String:
 	var executable_dir := OS.get_executable_path().get_base_dir()
-	var packaged_path := executable_dir.path_join("gddelta.exe")
-	if(FileAccess.file_exists(packaged_path)):
-		return packaged_path
+	var windows_path := executable_dir.path_join("gddelta.exe")
+	if(FileAccess.file_exists(windows_path)):
+		return windows_path
 
-	return packaged_path;
+	var linux_path := executable_dir.path_join("gddelta")
+	if(FileAccess.file_exists(linux_path)):
+		return linux_path
+
+	return windows_path;
+
+
+func _prepare_gdre_tools() -> void:
+	var executable := gddelta_executable_path.strip_edges()
+	if(executable.is_empty()):
+		return
+
+	var output := []
+	var exit_code := OS.execute(executable, PackedStringArray(["bootstrap"]), output, true, false)
+	if(exit_code != 0):
+		append_log(tr("FAILED_TO_PREPARE_GDRE_TOOLS"))
+		for line in output:
+			append_log(str(line))
 
 
 func _update_watch_button() -> void:

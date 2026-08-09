@@ -19,6 +19,9 @@ namespace cli_internal {
     class CliSupport {
         public:
             void launch_ui(const std::filesystem::path& cli_path) const;
+            std::filesystem::path resolve_cli_directory(const std::filesystem::path& cli_path) const;
+            std::filesystem::path resolve_tools_directory(const std::filesystem::path& cli_path) const;
+            void ensure_gdre_tools(const std::filesystem::path& cli_path);
             BaseInputPaths resolve_base_input(const std::filesystem::path& base_path) const;
             std::filesystem::path create_temporary_base_copy(const std::filesystem::path& base_pck) const;
             gddelta::pck::PckReader open_supported_base_pack(const std::filesystem::path& base_pck) const;

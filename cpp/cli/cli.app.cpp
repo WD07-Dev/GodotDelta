@@ -8,6 +8,11 @@ CliApplication::CliApplication():
 }
 
 int CliApplication::run(int argc, char **argv) {
+    const auto is_bootstrap_command = argc >= 2 && std::string_view(argv[1]) == "bootstrap";
+    if(!is_bootstrap_command) {
+        support_.ensure_gdre_tools(argv[0]);
+    }
+
     if(argc < 2) {
         print_usage();
         return 1;
@@ -96,6 +101,11 @@ CliApplication::WatchCommandOptions CliApplication::parse_watch_options(int argc
 int CliApplication::run_command(std::string_view command, int argc, char **argv) {
     if(command == "ui") {
         support_.launch_ui(argv[0]);
+        return 0;
+    }
+
+    if(command == "bootstrap") {
+        support_.ensure_gdre_tools(argv[0]);
         return 0;
     }
 

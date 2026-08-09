@@ -3,19 +3,31 @@
 #include "core/pck/pck_reader.h"
 #include "core/pck/pck_writer.h"
 #include "core/workspace/workspace.h"
+#include<algorithm>
+#include<array>
+#include<cctype>
 #include<chrono>
+#include<cstring>
+#include<cstdio>
 #include<filesystem>
+#include<fstream>
 #include<iostream>
 #include<optional>
+#include<string>
 #include<stdexcept>
 #include<thread>
 
 #ifdef _WIN32
 
+#include<objbase.h>
+#include<shldisp.h>
+#include<urlmon.h>
 #include<windows.h>
 
 #else
 
+#include<curl/curl.h>
+#include<minizip/unzip.h>
 #include<spawn.h>
 #include<sys/types.h>
 #include<unistd.h>
@@ -27,18 +39,26 @@ using namespace cli_internal;
 
 namespace {
 
+constexpr const char *kGdreToolsWindowsUrl = "https://github.com/GDRETools/gdsdecomp/releases/download/v2.6.3/GDRE_tools-v2.6.3-windows.zip";
+constexpr const char *kGdreToolsLinuxUrl = "https://github.com/GDRETools/gdsdecomp/releases/download/v2.6.3/GDRE_tools-v2.6.3-linux.zip";
+constexpr const char *kGdreExtractDirectoryName = ".gdre_extract";
+
 std::filesystem::path find_ui_executable(const std::filesystem::path& cli_path) {
     const auto cli_dir = std::filesystem::absolute(cli_path).parent_path();
 #ifdef _WIN32
-    const auto ui_path = cli_dir / "GodotDelta.exe";
-    if(std::filesystem::exists(ui_path)) {
-        return ui_path;
-    }
-#else
-    for(const auto& candidate_name : {"GodotDelta.x86_64", "GodotDelta"}) {
-        const auto ui_path = cli_dir / candidate_name;
+    for(const auto& base_dir : {cli_dir, cli_dir.parent_path()}) {
+        const auto ui_path = base_dir / "GodotDelta.exe";
         if(std::filesystem::exists(ui_path)) {
             return ui_path;
+        }
+    }
+#else
+    for(const auto& base_dir : {cli_dir, cli_dir.parent_path()}) {
+        for(const auto& candidate_name : {"GodotDelta.x86_64", "GodotDelta"}) {
+            const auto ui_path = base_dir / candidate_name;
+            if(std::filesystem::exists(ui_path)) {
+                return ui_path;
+            }
         }
     }
 #endif
@@ -51,6 +71,365 @@ std::filesystem::path build_temporary_copy_path(const std::filesystem::path& sou
     temp_path /= ".gddelta_base_" + source_path.filename().string() + "." + std::to_string(timestamp) + ".tmp";
     return temp_path;
 }
+
+std::string to_lower_copy(std::string value) {
+    std::transform(value.begin(), value.end(), value.begin(), [](unsigned char character) {
+        return static_cast<char>(std::tolower(character));
+    });
+    return value;
+}
+
+bool is_gdre_binary_name(const std::filesystem::path& path) {
+    const auto file_name = to_lower_copy(path.filename().string());
+#ifdef _WIN32
+    return file_name == "gdre_tools.exe";
+#else
+    return file_name == "gdre_tools" || file_name == "gdre_tools.x86_64" || file_name == "gdre_tools.64";
+#endif
+}
+
+std::filesystem::path find_gdre_binary(const std::filesystem::path& install_dir) {
+    if(!std::filesystem::exists(install_dir)) {
+        return {};
+    }
+
+    for(const auto& entry : std::filesystem::recursive_directory_iterator(install_dir)) {
+        if(!entry.is_regular_file()) {
+            continue;
+        }
+
+        if(is_gdre_binary_name(entry.path())) {
+            return entry.path();
+        }
+    }
+
+    return {};
+}
+
+std::filesystem::path gdre_binary_output_path(const std::filesystem::path& install_dir) {
+#ifdef _WIN32
+    return install_dir / "gdre_tools.exe";
+#else
+    return install_dir / "gdre_tools";
+#endif
+}
+
+std::filesystem::path gdre_archive_output_path(const std::filesystem::path& install_dir) {
+#ifdef _WIN32
+    return install_dir / "gdre_tools-windows.zip";
+#else
+    return install_dir / "gdre_tools-linux.zip";
+#endif
+}
+
+const char *gdre_download_url() {
+#ifdef _WIN32
+    return kGdreToolsWindowsUrl;
+#else
+    return kGdreToolsLinuxUrl;
+#endif
+}
+
+void copy_directory_contents(const std::filesystem::path& source_dir, const std::filesystem::path& target_dir) {
+    std::error_code ec;
+    std::filesystem::create_directories(target_dir, ec);
+    if(ec) {
+        throw std::runtime_error("Failed to create destination directory: " + target_dir.string());
+    }
+
+    for(const auto& entry : std::filesystem::recursive_directory_iterator(source_dir)) {
+        const auto relative_path = std::filesystem::relative(entry.path(), source_dir);
+        const auto destination = target_dir / relative_path;
+
+        if(entry.is_directory()) {
+            std::filesystem::create_directories(destination, ec);
+            if(ec) {
+                throw std::runtime_error("Failed to prepare extracted directory: " + destination.string());
+            }
+            continue;
+        }
+
+        if(!entry.is_regular_file()) {
+            continue;
+        }
+
+        std::filesystem::create_directories(destination.parent_path(), ec);
+        if(ec) {
+            throw std::runtime_error("Failed to prepare extracted path: " + destination.parent_path().string());
+        }
+
+        std::filesystem::copy_file(entry.path(), destination, std::filesystem::copy_options::overwrite_existing, ec);
+        if(ec) {
+            throw std::runtime_error("Failed to copy extracted file: " + entry.path().string());
+        }
+    }
+}
+
+void normalize_gdre_layout(const std::filesystem::path& install_dir) {
+    auto binary_path = find_gdre_binary(install_dir);
+    if(binary_path.empty()) {
+        throw std::runtime_error("Failed to find GDRE tools binary after extraction.");
+    }
+
+    if(binary_path.parent_path() != install_dir) {
+        copy_directory_contents(binary_path.parent_path(), install_dir);
+        binary_path = find_gdre_binary(install_dir);
+        if(binary_path.empty()) {
+            throw std::runtime_error("Failed to normalize GDRE tools into install directory.");
+        }
+    }
+
+    const auto normalized_path = gdre_binary_output_path(install_dir);
+    if(binary_path != normalized_path) {
+        std::error_code ec;
+        std::filesystem::copy_file(binary_path, normalized_path, std::filesystem::copy_options::overwrite_existing, ec);
+        if(ec) {
+            throw std::runtime_error("Failed to create normalized GDRE tools binary: " + normalized_path.string());
+        }
+    }
+
+#ifndef _WIN32
+    std::filesystem::permissions(
+        normalized_path,
+        std::filesystem::perms::owner_exec | std::filesystem::perms::group_exec | std::filesystem::perms::others_exec,
+        std::filesystem::perm_options::add
+    );
+#endif
+}
+
+#ifndef _WIN32
+
+size_t curl_write_file_callback(void *contents, size_t size, size_t nmemb, void *user_data) {
+    auto *stream = static_cast<std::ofstream *>(user_data);
+    const auto bytes = size * nmemb;
+    stream->write(static_cast<const char *>(contents), static_cast<std::streamsize>(bytes));
+    return stream->good() ? bytes : 0;
+}
+
+void download_file_with_libcurl(const std::string& url, const std::filesystem::path& output_path) {
+    curl_global_init(CURL_GLOBAL_DEFAULT);
+    auto *curl = curl_easy_init();
+    if(curl == nullptr) {
+        throw std::runtime_error("Failed to initialize libcurl.");
+    }
+
+    std::ofstream output(output_path, std::ios::binary | std::ios::out | std::ios::trunc);
+    if(!output.is_open()) {
+        curl_easy_cleanup(curl);
+        throw std::runtime_error("Failed to open download output file: " + output_path.string());
+    }
+
+    curl_easy_setopt(curl, CURLOPT_URL, url.c_str());
+    curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
+    curl_easy_setopt(curl, CURLOPT_FAILONERROR, 1L);
+    curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, curl_write_file_callback);
+    curl_easy_setopt(curl, CURLOPT_WRITEDATA, &output);
+
+    const auto result = curl_easy_perform(curl);
+    curl_easy_cleanup(curl);
+    output.close();
+
+    if(result != CURLE_OK) {
+        throw std::runtime_error("Failed to download GDRE tools archive: " + std::string(curl_easy_strerror(result)));
+    }
+}
+
+void extract_zip_with_minizip(const std::filesystem::path& archive_path, const std::filesystem::path& output_dir) {
+    auto *zip_file = unzOpen64(archive_path.string().c_str());
+    if(zip_file == nullptr) {
+        throw std::runtime_error("Failed to open GDRE tools archive: " + archive_path.string());
+    }
+
+    const auto close_zip = [&]() {
+        unzClose(zip_file);
+    };
+
+    if(unzGoToFirstFile(zip_file) != UNZ_OK) {
+        close_zip();
+        throw std::runtime_error("Failed to read GDRE tools archive entries.");
+    }
+
+    do {
+        unz_file_info64 file_info{};
+        char file_name[1024] = {};
+        if(unzGetCurrentFileInfo64(zip_file, &file_info, file_name, sizeof(file_name), nullptr, 0, nullptr, 0) != UNZ_OK) {
+            close_zip();
+            throw std::runtime_error("Failed to read GDRE tools archive file info.");
+        }
+
+        const auto relative_path = std::filesystem::path(file_name);
+        const auto destination = output_dir / relative_path;
+
+        if(relative_path.empty()) {
+            continue;
+        }
+
+        if(file_name[std::strlen(file_name) - 1] == '/') {
+            std::filesystem::create_directories(destination);
+            continue;
+        }
+
+        std::filesystem::create_directories(destination.parent_path());
+        if(unzOpenCurrentFile(zip_file) != UNZ_OK) {
+            close_zip();
+            throw std::runtime_error("Failed to open archive entry: " + relative_path.string());
+        }
+
+        std::ofstream output(destination, std::ios::binary | std::ios::out | std::ios::trunc);
+        if(!output.is_open()) {
+            unzCloseCurrentFile(zip_file);
+            close_zip();
+            throw std::runtime_error("Failed to open extracted file: " + destination.string());
+        }
+
+        std::array<char, 16384> buffer{};
+        for(;;) {
+            const auto bytes_read = unzReadCurrentFile(zip_file, buffer.data(), static_cast<unsigned int>(buffer.size()));
+            if(bytes_read < 0) {
+                output.close();
+                unzCloseCurrentFile(zip_file);
+                close_zip();
+                throw std::runtime_error("Failed to extract archive entry: " + relative_path.string());
+            }
+            if(bytes_read == 0) {
+                break;
+            }
+            output.write(buffer.data(), bytes_read);
+        }
+
+        output.close();
+        unzCloseCurrentFile(zip_file);
+    } while(unzGoToNextFile(zip_file) == UNZ_OK);
+
+    close_zip();
+}
+
+#else
+
+std::wstring to_wstring(const std::filesystem::path& path) {
+    return path.wstring();
+}
+
+void download_file_with_urlmon(const std::string& url, const std::filesystem::path& output_path) {
+    const auto wide_url = std::wstring(url.begin(), url.end());
+    const auto wide_path = to_wstring(output_path);
+    const auto result = URLDownloadToFileW(nullptr, wide_url.c_str(), wide_path.c_str(), 0, nullptr);
+    if(FAILED(result)) {
+        throw std::runtime_error("Failed to download GDRE tools archive.");
+    }
+}
+
+class ScopedComInitializer {
+    public:
+        ScopedComInitializer() {
+            result_ = CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
+        }
+
+        ~ScopedComInitializer() {
+            if(SUCCEEDED(result_)) {
+                CoUninitialize();
+            }
+        }
+
+        void ensure() const {
+            if(FAILED(result_)) {
+                throw std::runtime_error("Failed to initialize COM for GDRE tools extraction.");
+            }
+        }
+
+    private:
+        HRESULT result_ = E_FAIL;
+};
+
+void extract_zip_with_shell(const std::filesystem::path& archive_path, const std::filesystem::path& output_dir) {
+    ScopedComInitializer com;
+    com.ensure();
+
+    IShellDispatch *shell = nullptr;
+    if(FAILED(CoCreateInstance(CLSID_Shell, nullptr, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&shell)))) {
+        throw std::runtime_error("Failed to create Windows Shell for GDRE tools extraction.");
+    }
+
+    auto release_shell = [&]() {
+        if(shell != nullptr) {
+            shell->Release();
+        }
+    };
+
+    Folder *zip_folder = nullptr;
+    Folder *dest_folder = nullptr;
+    FolderItems *items = nullptr;
+
+    VARIANT archive_variant;
+    VariantInit(&archive_variant);
+    archive_variant.vt = VT_BSTR;
+    archive_variant.bstrVal = SysAllocString(to_wstring(archive_path).c_str());
+
+    VARIANT dest_variant;
+    VariantInit(&dest_variant);
+    dest_variant.vt = VT_BSTR;
+    dest_variant.bstrVal = SysAllocString(to_wstring(output_dir).c_str());
+
+    if(FAILED(shell->NameSpace(archive_variant, &zip_folder)) || zip_folder == nullptr) {
+        VariantClear(&archive_variant);
+        VariantClear(&dest_variant);
+        release_shell();
+        throw std::runtime_error("Failed to open GDRE tools zip folder.");
+    }
+
+    if(FAILED(shell->NameSpace(dest_variant, &dest_folder)) || dest_folder == nullptr) {
+        zip_folder->Release();
+        VariantClear(&archive_variant);
+        VariantClear(&dest_variant);
+        release_shell();
+        throw std::runtime_error("Failed to open GDRE tools destination folder.");
+    }
+
+    if(FAILED(zip_folder->Items(&items)) || items == nullptr) {
+        dest_folder->Release();
+        zip_folder->Release();
+        VariantClear(&archive_variant);
+        VariantClear(&dest_variant);
+        release_shell();
+        throw std::runtime_error("Failed to read GDRE tools zip items.");
+    }
+
+    VARIANT items_variant;
+    VariantInit(&items_variant);
+    items_variant.vt = VT_DISPATCH;
+    items_variant.pdispVal = items;
+
+    VARIANT options_variant;
+    VariantInit(&options_variant);
+    options_variant.vt = VT_I4;
+    options_variant.lVal = 16 | 1024;
+
+    const auto copy_result = dest_folder->CopyHere(items_variant, options_variant);
+
+    VariantClear(&options_variant);
+    VariantClear(&items_variant);
+    items->Release();
+    dest_folder->Release();
+    zip_folder->Release();
+    VariantClear(&archive_variant);
+    VariantClear(&dest_variant);
+    release_shell();
+
+    if(FAILED(copy_result)) {
+        throw std::runtime_error("Failed to extract GDRE tools archive.");
+    }
+
+    for(int i = 0; i < 200; ++i) {
+        if(!find_gdre_binary(output_dir).empty()) {
+            return;
+        }
+        Sleep(100);
+    }
+
+    throw std::runtime_error("Timed out waiting for GDRE tools extraction.");
+}
+
+#endif
 
 }
 
@@ -96,6 +475,57 @@ void CliSupport::launch_ui(const std::filesystem::path& cli_path) const {
 #endif
 
     std::cout << "Started GodotDelta UI: " << ui_path << "\n";
+}
+
+std::filesystem::path CliSupport::resolve_cli_directory(const std::filesystem::path& cli_path) const {
+    return std::filesystem::absolute(cli_path).parent_path();
+}
+
+std::filesystem::path CliSupport::resolve_tools_directory(const std::filesystem::path& cli_path) const {
+    return resolve_cli_directory(cli_path);
+}
+
+void CliSupport::ensure_gdre_tools(const std::filesystem::path& cli_path) {
+    const auto install_dir = resolve_tools_directory(cli_path);
+    const auto normalized_binary_path = gdre_binary_output_path(install_dir);
+    if(std::filesystem::exists(normalized_binary_path)) {
+        std::cout << "GDRE tools already installed: " << normalized_binary_path << "\n";
+        return;
+    }
+
+    std::error_code ec;
+    std::filesystem::create_directories(install_dir, ec);
+    if(ec) {
+        throw std::runtime_error("Failed to create install directory: " + install_dir.string());
+    }
+
+    const auto archive_path = gdre_archive_output_path(install_dir);
+    const auto extract_dir = install_dir / kGdreExtractDirectoryName;
+    std::filesystem::remove_all(extract_dir, ec);
+    std::filesystem::create_directories(extract_dir, ec);
+    if(ec) {
+        throw std::runtime_error("Failed to prepare GDRE extraction directory: " + extract_dir.string());
+    }
+
+    const auto *download_url = gdre_download_url();
+
+    std::cout << "Downloading GDRE tools from " << download_url << "\n";
+
+#ifdef _WIN32
+    download_file_with_urlmon(download_url, archive_path);
+    extract_zip_with_shell(archive_path, extract_dir);
+#else
+    download_file_with_libcurl(download_url, archive_path);
+    extract_zip_with_minizip(archive_path, extract_dir);
+#endif
+
+    copy_directory_contents(extract_dir, install_dir);
+    normalize_gdre_layout(install_dir);
+
+    std::filesystem::remove_all(extract_dir, ec);
+    std::filesystem::remove(archive_path, ec);
+
+    std::cout << "Prepared GDRE tools in " << install_dir << "\n";
 }
 
 BaseInputPaths CliSupport::resolve_base_input(const std::filesystem::path& base_path) const {
