@@ -8,15 +8,10 @@
 #include<cstdint>
 #include<fstream>
 #include<iomanip>
-#ifdef _WIN32
-#include<windows.h>
-#include<bcrypt.h>
-#else
 #include<openssl/evp.h>
 #include<openssl/hmac.h>
 #include<openssl/kdf.h>
 #include<openssl/rand.h>
-#endif
 #include<optional>
 #include<span>
 #include<sstream>
@@ -155,46 +150,13 @@ std::uint32_t read_u32_le(const ByteVector& input, std::size_t offset) {
 
 ByteVector random_bytes(std::size_t size) {
     ByteVector bytes(size);
-#ifdef _WIN32
-    if(BCryptGenRandom(nullptr, bytes.data(), static_cast<ULONG>(bytes.size()), BCRYPT_USE_SYSTEM_PREFERRED_RNG) < 0) {
-        throw std::runtime_error("Failed to generate cryptographic random bytes.");
-    }
-#else
     if(RAND_bytes(bytes.data(), static_cast<int>(bytes.size())) != 1) {
         throw std::runtime_error("Failed to generate cryptographic random bytes.");
     }
-#endif
     return bytes;
 }
 
 ByteVector sha256_bytes(std::string_view input) {
-#ifdef _WIN32
-    BCRYPT_ALG_HANDLE algorithm = nullptr;
-    BCRYPT_HASH_HANDLE hash = nullptr;
-    DWORD object_size = 0;
-    DWORD data_size = 0;
-    if(BCryptOpenAlgorithmProvider(&algorithm, BCRYPT_SHA256_ALGORITHM, nullptr, 0) < 0) {
-        throw std::runtime_error("Failed to open SHA-256 algorithm provider.");
-    }
-    if(BCryptGetProperty(algorithm, BCRYPT_OBJECT_LENGTH, reinterpret_cast<PUCHAR>(&object_size), sizeof(object_size), &data_size, 0) < 0) {
-        BCryptCloseAlgorithmProvider(algorithm, 0);
-        throw std::runtime_error("Failed to query SHA-256 object size.");
-    }
-    ByteVector hash_object(object_size);
-    ByteVector digest(32);
-    if(BCryptCreateHash(algorithm, &hash, hash_object.data(), static_cast<ULONG>(hash_object.size()), nullptr, 0, 0) < 0 ||
-        BCryptHashData(hash, reinterpret_cast<PUCHAR>(const_cast<char *>(input.data())), static_cast<ULONG>(input.size()), 0) < 0 ||
-        BCryptFinishHash(hash, digest.data(), static_cast<ULONG>(digest.size()), 0) < 0) {
-        if(hash != nullptr) {
-            BCryptDestroyHash(hash);
-        }
-        BCryptCloseAlgorithmProvider(algorithm, 0);
-        throw std::runtime_error("Failed to compute SHA-256 digest.");
-    }
-    BCryptDestroyHash(hash);
-    BCryptCloseAlgorithmProvider(algorithm, 0);
-    return digest;
-#else
     ByteVector digest(EVP_MD_size(EVP_sha256()));
     unsigned int digest_size = 0;
     if(EVP_Digest(
@@ -209,7 +171,6 @@ ByteVector sha256_bytes(std::string_view input) {
     }
     digest.resize(digest_size);
     return digest;
-#endif
 }
 
 ByteVector sha256_bytes(const ByteVector& input) {
@@ -220,41 +181,6 @@ ByteVector sha256_bytes(const ByteVector& input) {
 }
 
 ByteVector hmac_sha256(const ByteVector& key, std::span<const std::uint8_t> message) {
-#ifdef _WIN32
-    BCRYPT_ALG_HANDLE algorithm = nullptr;
-    BCRYPT_HASH_HANDLE hash = nullptr;
-    DWORD object_size = 0;
-    DWORD data_size = 0;
-    if(BCryptOpenAlgorithmProvider(&algorithm, BCRYPT_SHA256_ALGORITHM, nullptr, BCRYPT_ALG_HANDLE_HMAC_FLAG) < 0) {
-        throw std::runtime_error("Failed to open HMAC-SHA256 algorithm provider.");
-    }
-    if(BCryptGetProperty(algorithm, BCRYPT_OBJECT_LENGTH, reinterpret_cast<PUCHAR>(&object_size), sizeof(object_size), &data_size, 0) < 0) {
-        BCryptCloseAlgorithmProvider(algorithm, 0);
-        throw std::runtime_error("Failed to query HMAC-SHA256 object size.");
-    }
-    ByteVector hash_object(object_size);
-    ByteVector digest(32);
-    if(BCryptCreateHash(
-            algorithm,
-            &hash,
-            hash_object.data(),
-            static_cast<ULONG>(hash_object.size()),
-            const_cast<PUCHAR>(key.data()),
-            static_cast<ULONG>(key.size()),
-            0
-        ) < 0 ||
-        BCryptHashData(hash, const_cast<PUCHAR>(message.data()), static_cast<ULONG>(message.size()), 0) < 0 ||
-        BCryptFinishHash(hash, digest.data(), static_cast<ULONG>(digest.size()), 0) < 0) {
-        if(hash != nullptr) {
-            BCryptDestroyHash(hash);
-        }
-        BCryptCloseAlgorithmProvider(algorithm, 0);
-        throw std::runtime_error("Failed to compute HMAC-SHA256.");
-    }
-    BCryptDestroyHash(hash);
-    BCryptCloseAlgorithmProvider(algorithm, 0);
-    return digest;
-#else
     unsigned int digest_size = 0;
     ByteVector digest(EVP_MAX_MD_SIZE);
     if(HMAC(
@@ -270,7 +196,6 @@ ByteVector hmac_sha256(const ByteVector& key, std::span<const std::uint8_t> mess
     }
     digest.resize(digest_size);
     return digest;
-#endif
 }
 
 ByteVector hkdf_sha256(
@@ -279,28 +204,6 @@ ByteVector hkdf_sha256(
     std::string_view info,
     std::size_t output_size
 ) {
-#ifdef _WIN32
-    ByteVector salt_bytes(salt.begin(), salt.end());
-    if(salt_bytes.empty()) {
-        salt_bytes.resize(32, 0);
-    }
-
-    const auto prk = hmac_sha256(salt_bytes, std::span<const std::uint8_t>(ikm.data(), ikm.size()));
-    ByteVector output;
-    output.reserve(output_size);
-    ByteVector previous;
-    std::uint8_t counter = 1;
-    while(output.size() < output_size) {
-        ByteVector block_input = previous;
-        block_input.insert(block_input.end(), info.begin(), info.end());
-        block_input.push_back(counter);
-        previous = hmac_sha256(prk, std::span<const std::uint8_t>(block_input.data(), block_input.size()));
-        const auto bytes_to_copy = std::min(previous.size(), output_size - output.size());
-        output.insert(output.end(), previous.begin(), previous.begin() + static_cast<std::ptrdiff_t>(bytes_to_copy));
-        ++counter;
-    }
-    return output;
-#else
     auto *context = EVP_PKEY_CTX_new_id(EVP_PKEY_HKDF, nullptr);
     if(context == nullptr) {
         throw std::runtime_error("Failed to create HKDF context.");
@@ -336,7 +239,6 @@ ByteVector hkdf_sha256(
     cleanup();
     output.resize(output_length);
     return output;
-#endif
 }
 
 ByteVector derive_chunk_key(const ByteVector& chunk_bytes) {
@@ -346,69 +248,6 @@ ByteVector derive_chunk_key(const ByteVector& chunk_bytes) {
 
 ByteVector encrypt_aes_256_gcm(const ByteVector& key, const ByteVector& plaintext) {
     const auto nonce = random_bytes(kGcmNonceSize);
-#ifdef _WIN32
-    BCRYPT_ALG_HANDLE algorithm = nullptr;
-    BCRYPT_KEY_HANDLE crypto_key = nullptr;
-    DWORD object_size = 0;
-    DWORD data_size = 0;
-    if(BCryptOpenAlgorithmProvider(&algorithm, BCRYPT_AES_ALGORITHM, nullptr, 0) < 0) {
-        throw std::runtime_error("Failed to open AES algorithm provider.");
-    }
-    if(BCryptSetProperty(
-            algorithm,
-            BCRYPT_CHAINING_MODE,
-            reinterpret_cast<PUCHAR>(const_cast<wchar_t *>(BCRYPT_CHAIN_MODE_GCM)),
-            sizeof(BCRYPT_CHAIN_MODE_GCM),
-            0
-        ) < 0 ||
-        BCryptGetProperty(algorithm, BCRYPT_OBJECT_LENGTH, reinterpret_cast<PUCHAR>(&object_size), sizeof(object_size), &data_size, 0) < 0) {
-        BCryptCloseAlgorithmProvider(algorithm, 0);
-        throw std::runtime_error("Failed to configure AES-GCM provider.");
-    }
-
-    ByteVector key_object(object_size);
-    if(BCryptGenerateSymmetricKey(
-            algorithm,
-            &crypto_key,
-            key_object.data(),
-            static_cast<ULONG>(key_object.size()),
-            const_cast<PUCHAR>(key.data()),
-            static_cast<ULONG>(key.size()),
-            0
-        ) < 0) {
-        BCryptCloseAlgorithmProvider(algorithm, 0);
-        throw std::runtime_error("Failed to create AES-GCM key.");
-    }
-
-    ByteVector ciphertext(plaintext.size());
-    ByteVector tag(kGcmTagSize);
-    BCRYPT_AUTHENTICATED_CIPHER_MODE_INFO auth_info;
-    BCRYPT_INIT_AUTH_MODE_INFO(auth_info);
-    auth_info.pbNonce = const_cast<PUCHAR>(nonce.data());
-    auth_info.cbNonce = static_cast<ULONG>(nonce.size());
-    auth_info.pbTag = tag.data();
-    auth_info.cbTag = static_cast<ULONG>(tag.size());
-
-    ULONG ciphertext_size = 0;
-    const auto status = BCryptEncrypt(
-        crypto_key,
-        const_cast<PUCHAR>(plaintext.data()),
-        static_cast<ULONG>(plaintext.size()),
-        &auth_info,
-        nullptr,
-        0,
-        ciphertext.data(),
-        static_cast<ULONG>(ciphertext.size()),
-        &ciphertext_size,
-        0
-    );
-    BCryptDestroyKey(crypto_key);
-    BCryptCloseAlgorithmProvider(algorithm, 0);
-    if(status < 0) {
-        throw std::runtime_error("Failed to encrypt AES-GCM payload.");
-    }
-    ciphertext.resize(ciphertext_size);
-#else
     auto *context = EVP_CIPHER_CTX_new();
     if(context == nullptr) {
         throw std::runtime_error("Failed to create AES-GCM context.");
@@ -442,7 +281,6 @@ ByteVector encrypt_aes_256_gcm(const ByteVector& key, const ByteVector& plaintex
     }
     cleanup();
     auto ciphertext = std::move(encrypted);
-#endif
 
     ByteVector blob;
     append_bytes(blob, "GDEM");
@@ -479,69 +317,6 @@ ByteVector decrypt_aes_256_gcm(const ByteVector& key, const ByteVector& blob) {
     const auto* tag = nonce + nonce_size;
     const auto* ciphertext = tag + tag_size;
 
-#ifdef _WIN32
-    BCRYPT_ALG_HANDLE algorithm = nullptr;
-    BCRYPT_KEY_HANDLE crypto_key = nullptr;
-    DWORD object_size = 0;
-    DWORD data_size = 0;
-    if(BCryptOpenAlgorithmProvider(&algorithm, BCRYPT_AES_ALGORITHM, nullptr, 0) < 0) {
-        throw std::runtime_error("Failed to open AES algorithm provider.");
-    }
-    if(BCryptSetProperty(
-            algorithm,
-            BCRYPT_CHAINING_MODE,
-            reinterpret_cast<PUCHAR>(const_cast<wchar_t *>(BCRYPT_CHAIN_MODE_GCM)),
-            sizeof(BCRYPT_CHAIN_MODE_GCM),
-            0
-        ) < 0 ||
-        BCryptGetProperty(algorithm, BCRYPT_OBJECT_LENGTH, reinterpret_cast<PUCHAR>(&object_size), sizeof(object_size), &data_size, 0) < 0) {
-        BCryptCloseAlgorithmProvider(algorithm, 0);
-        throw std::runtime_error("Failed to configure AES-GCM provider.");
-    }
-
-    ByteVector key_object(object_size);
-    if(BCryptGenerateSymmetricKey(
-            algorithm,
-            &crypto_key,
-            key_object.data(),
-            static_cast<ULONG>(key_object.size()),
-            const_cast<PUCHAR>(key.data()),
-            static_cast<ULONG>(key.size()),
-            0
-        ) < 0) {
-        BCryptCloseAlgorithmProvider(algorithm, 0);
-        throw std::runtime_error("Failed to create AES-GCM key.");
-    }
-
-    ByteVector plaintext(ciphertext_size);
-    BCRYPT_AUTHENTICATED_CIPHER_MODE_INFO auth_info;
-    BCRYPT_INIT_AUTH_MODE_INFO(auth_info);
-    auth_info.pbNonce = const_cast<PUCHAR>(nonce);
-    auth_info.cbNonce = nonce_size;
-    auth_info.pbTag = const_cast<PUCHAR>(tag);
-    auth_info.cbTag = tag_size;
-
-    ULONG plaintext_size = 0;
-    const auto status = BCryptDecrypt(
-        crypto_key,
-        const_cast<PUCHAR>(ciphertext),
-        ciphertext_size,
-        &auth_info,
-        nullptr,
-        0,
-        plaintext.data(),
-        static_cast<ULONG>(plaintext.size()),
-        &plaintext_size,
-        0
-    );
-    BCryptDestroyKey(crypto_key);
-    BCryptCloseAlgorithmProvider(algorithm, 0);
-    if(status < 0) {
-        throw std::runtime_error("AES-GCM authentication failed.");
-    }
-    plaintext.resize(plaintext_size);
-    return plaintext;
-#else
     auto *context = EVP_CIPHER_CTX_new();
     if(context == nullptr) {
         throw std::runtime_error("Failed to create AES-GCM context.");
@@ -575,7 +350,6 @@ ByteVector decrypt_aes_256_gcm(const ByteVector& key, const ByteVector& blob) {
     cleanup();
     plaintext.resize(total_length);
     return plaintext;
-#endif
 }
 
 std::array<std::uint8_t, 512> gf256_exp_table;
