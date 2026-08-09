@@ -1,12 +1,12 @@
 extends Control
 signal watch_state_changed(running: bool)
 
-@onready var advanced_toggle: CheckBox = %AdvancedToggle
-@onready var runtime_status_label: Label = %RuntimeStatus
+@onready var advanced_toggle: CheckBox = $Margin/Root/AdvancedToggle
+@onready var runtime_status_label: Label = $Margin/Root/RuntimeStatus
 @onready var tabs: TabContainer = $Margin/Root/Tabs
-@onready var patch_tab: VBoxContainer = %Patch
-@onready var path_dialog: FileDialog = %PathDialog
-@onready var log_output: TextEdit = %LogOutput
+@onready var patch_tab: VBoxContainer = $Margin/Root/Tabs/Patch
+@onready var path_dialog: FileDialog = $PathDialog
+@onready var log_output: TextEdit = $Margin/Root/LogOutput
 
 var gddelta_executable_path := ""
 var current_path_target: LineEdit = null
@@ -49,7 +49,7 @@ func is_advanced_enabled() -> bool:
 func is_watch_running() -> bool:
 	return watch_pid != -1
 
-func run_gddelta(args: Array[String]) -> int:
+func run_gddelta(args: Array) -> int:
 	var executable := gddelta_executable_path.strip_edges()
 	if(executable.is_empty()):
 		append_log(tr("GDDELTA_EXECUTABLE_PATH_IS_EMPTY"))

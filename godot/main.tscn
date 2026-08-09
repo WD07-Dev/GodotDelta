@@ -59,13 +59,11 @@ theme_override_colors/font_color = Color(0.670588, 0.733333, 0.858824, 1)
 text = "APP_SUBHEADER"
 
 [node name="RuntimeStatus" type="Label" parent="Margin/Root" unique_id=223692293]
-unique_name_in_owner = true
 layout_mode = 2
 theme_override_colors/font_color = Color(0.552941, 0.615686, 0.733333, 1)
 text = "RUNTIME_STATUS_RESOLVING"
 
 [node name="AdvancedToggle" type="CheckBox" parent="Margin/Root" unique_id=884014002]
-unique_name_in_owner = true
 layout_mode = 2
 text = "ENABLE_ADVANCED_FEATURES"
 
@@ -76,7 +74,6 @@ theme_override_styles/panel = SubResource("StyleBoxFlat_panel")
 current_tab = 0
 
 [node name="Patch" type="VBoxContainer" parent="Margin/Root/Tabs" unique_id=1693289324]
-unique_name_in_owner = true
 layout_mode = 2
 theme_override_constants/separation = 8
 script = ExtResource("2_dky4h")
@@ -91,34 +88,28 @@ layout_mode = 2
 theme_override_constants/separation = 8
 
 [node name="BasePath" type="LineEdit" parent="Margin/Root/Tabs/Patch/BaseRow" unique_id=844493260]
-unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 3
 placeholder_text = "PLACEHOLDER_BASE_PATH"
 
 [node name="BaseBrowseButton" type="Button" parent="Margin/Root/Tabs/Patch/BaseRow" unique_id=1301691190]
-unique_name_in_owner = true
 layout_mode = 2
 text = "BROWSE"
 
 [node name="ProjectLabel" type="Label" parent="Margin/Root/Tabs/Patch" unique_id=1803781355]
-unique_name_in_owner = true
 layout_mode = 2
 text = "PROJECT_DIRECTORY"
 
 [node name="ProjectRow" type="HBoxContainer" parent="Margin/Root/Tabs/Patch" unique_id=1587274952]
-unique_name_in_owner = true
 layout_mode = 2
 theme_override_constants/separation = 8
 
 [node name="ProjectPath" type="LineEdit" parent="Margin/Root/Tabs/Patch/ProjectRow" unique_id=1062229435]
-unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 3
 placeholder_text = "PLACEHOLDER_PROJECT_PATH"
 
 [node name="ProjectBrowseButton" type="Button" parent="Margin/Root/Tabs/Patch/ProjectRow" unique_id=1140655880]
-unique_name_in_owner = true
 layout_mode = 2
 text = "BROWSE"
 
@@ -131,13 +122,11 @@ layout_mode = 2
 theme_override_constants/separation = 8
 
 [node name="PatchPath" type="LineEdit" parent="Margin/Root/Tabs/Patch/PatchOutputRow" unique_id=684454955]
-unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 3
 placeholder_text = "PLACEHOLDER_PATCH_PATH"
 
 [node name="PatchBrowseButton" type="Button" parent="Margin/Root/Tabs/Patch/PatchOutputRow" unique_id=1484769160]
-unique_name_in_owner = true
 layout_mode = 2
 text = "BROWSE"
 
@@ -150,13 +139,11 @@ layout_mode = 2
 theme_override_constants/separation = 8
 
 [node name="ApplyOutputPath" type="LineEdit" parent="Margin/Root/Tabs/Patch/ApplyOutputRow" unique_id=6351473]
-unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 3
 placeholder_text = "PLACEHOLDER_APPLY_OUTPUT_PATH"
 
 [node name="ApplyOutputBrowseButton" type="Button" parent="Margin/Root/Tabs/Patch/ApplyOutputRow" unique_id=1699522761]
-unique_name_in_owner = true
 layout_mode = 2
 text = "BROWSE"
 
@@ -165,19 +152,16 @@ layout_mode = 2
 theme_override_constants/separation = 8
 
 [node name="MakePatchButton" type="Button" parent="Margin/Root/Tabs/Patch/PatchButtons" unique_id=1980716701]
-unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 3
 text = "MAKE_PATCH"
 
 [node name="ApplyButton" type="Button" parent="Margin/Root/Tabs/Patch/PatchButtons" unique_id=1635344083]
-unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 3
 text = "APPLY"
 
 [node name="Patch (DevMode)" type="VBoxContainer" parent="Margin/Root/Tabs" unique_id=1386460066]
-unique_name_in_owner = true
 visible = false
 layout_mode = 2
 theme_override_constants/separation = 8
@@ -193,13 +177,11 @@ layout_mode = 2
 theme_override_constants/separation = 8
 
 [node name="DevBasePath" type="LineEdit" parent="Margin/Root/Tabs/Patch (DevMode)/DevBaseRow" unique_id=1015235871]
-unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 3
 placeholder_text = "PLACEHOLDER_BASE_PATH"
 
 [node name="DevBaseBrowseButton" type="Button" parent="Margin/Root/Tabs/Patch (DevMode)/DevBaseRow" unique_id=508870467]
-unique_name_in_owner = true
 layout_mode = 2
 text = "BROWSE"
 
@@ -212,13 +194,11 @@ layout_mode = 2
 theme_override_constants/separation = 8
 
 [node name="DevProjectPath" type="LineEdit" parent="Margin/Root/Tabs/Patch (DevMode)/DevProjectRow" unique_id=1325941200]
-unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 3
 placeholder_text = "PLACEHOLDER_PROJECT_PATH"
 
 [node name="DevProjectBrowseButton" type="Button" parent="Margin/Root/Tabs/Patch (DevMode)/DevProjectRow" unique_id=952946058]
-unique_name_in_owner = true
 layout_mode = 2
 text = "BROWSE"
 
@@ -231,13 +211,11 @@ layout_mode = 2
 theme_override_constants/separation = 8
 
 [node name="SandboxPath" type="LineEdit" parent="Margin/Root/Tabs/Patch (DevMode)/SandboxRow" unique_id=259554233]
-unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 3
 placeholder_text = "PLACEHOLDER_SANDBOX_PATH"
 
 [node name="SandboxBrowseButton" type="Button" parent="Margin/Root/Tabs/Patch (DevMode)/SandboxRow" unique_id=616052042]
-unique_name_in_owner = true
 layout_mode = 2
 text = "BROWSE"
 
@@ -246,7 +224,6 @@ layout_mode = 2
 theme_override_constants/separation = 8
 
 [node name="DevBuildButton" type="Button" parent="Margin/Root/Tabs/Patch (DevMode)/DevButtons" unique_id=1507026504]
-unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 3
 text = "DEV_BUILD"
@@ -257,7 +234,6 @@ size_flags_horizontal = 3
 text = "RUN_GAME"
 
 [node name="Live Patch (DevMode)" type="VBoxContainer" parent="Margin/Root/Tabs" unique_id=841235111]
-unique_name_in_owner = true
 visible = false
 layout_mode = 2
 theme_override_constants/separation = 8
@@ -273,13 +249,11 @@ layout_mode = 2
 theme_override_constants/separation = 8
 
 [node name="LiveBasePath" type="LineEdit" parent="Margin/Root/Tabs/Live Patch (DevMode)/LiveBaseRow" unique_id=512301003]
-unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 3
 placeholder_text = "PLACEHOLDER_BASE_PATH"
 
 [node name="LiveBaseBrowseButton" type="Button" parent="Margin/Root/Tabs/Live Patch (DevMode)/LiveBaseRow" unique_id=512301004]
-unique_name_in_owner = true
 layout_mode = 2
 text = "BROWSE"
 
@@ -292,13 +266,11 @@ layout_mode = 2
 theme_override_constants/separation = 8
 
 [node name="LiveProjectPath" type="LineEdit" parent="Margin/Root/Tabs/Live Patch (DevMode)/LiveProjectRow" unique_id=512301007]
-unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 3
 placeholder_text = "PLACEHOLDER_PROJECT_PATH"
 
 [node name="LiveProjectBrowseButton" type="Button" parent="Margin/Root/Tabs/Live Patch (DevMode)/LiveProjectRow" unique_id=512301008]
-unique_name_in_owner = true
 layout_mode = 2
 text = "BROWSE"
 
@@ -311,13 +283,11 @@ layout_mode = 2
 theme_override_constants/separation = 8
 
 [node name="LivePatchPath" type="LineEdit" parent="Margin/Root/Tabs/Live Patch (DevMode)/LivePatchRow" unique_id=512301011]
-unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 3
 placeholder_text = "PLACEHOLDER_LIVE_PATCH_PATH"
 
 [node name="LivePatchBrowseButton" type="Button" parent="Margin/Root/Tabs/Live Patch (DevMode)/LivePatchRow" unique_id=512301012]
-unique_name_in_owner = true
 layout_mode = 2
 text = "BROWSE"
 
@@ -330,13 +300,11 @@ layout_mode = 2
 theme_override_constants/separation = 8
 
 [node name="LiveSandboxPath" type="LineEdit" parent="Margin/Root/Tabs/Live Patch (DevMode)/LiveSandboxRow" unique_id=512301015]
-unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 3
 placeholder_text = "PLACEHOLDER_SANDBOX_PATH"
 
 [node name="LiveSandboxBrowseButton" type="Button" parent="Margin/Root/Tabs/Live Patch (DevMode)/LiveSandboxRow" unique_id=512301016]
-unique_name_in_owner = true
 layout_mode = 2
 text = "BROWSE"
 
@@ -345,7 +313,6 @@ layout_mode = 2
 text = "WATCH_INTERVAL_MS"
 
 [node name="LiveIntervalPath" type="LineEdit" parent="Margin/Root/Tabs/Live Patch (DevMode)" unique_id=512301018]
-unique_name_in_owner = true
 layout_mode = 2
 text = "500"
 
@@ -354,7 +321,6 @@ layout_mode = 2
 theme_override_constants/separation = 8
 
 [node name="WatchButton" type="Button" parent="Margin/Root/Tabs/Live Patch (DevMode)/LiveButtons" unique_id=57623268]
-unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 3
 text = "START_WATCH"
@@ -369,14 +335,12 @@ layout_mode = 2
 text = "LOG"
 
 [node name="LogOutput" type="TextEdit" parent="Margin/Root" unique_id=1587156904]
-unique_name_in_owner = true
 layout_mode = 2
 size_flags_vertical = 3
 theme_override_styles/normal = SubResource("StyleBoxFlat_log")
 editable = false
 
 [node name="PathDialog" type="FileDialog" parent="." unique_id=726726124]
-unique_name_in_owner = true
 title = "SELECT_PATH"
 access = 2
 use_native_dialog = true

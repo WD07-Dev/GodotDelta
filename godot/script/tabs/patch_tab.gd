@@ -1,12 +1,12 @@
 extends VBoxContainer
 
-@onready var base_path_edit: LineEdit = %BasePath
-@onready var project_label: Label = %ProjectLabel
-@onready var project_row: HBoxContainer = %ProjectRow
-@onready var project_path_edit: LineEdit = %ProjectPath
-@onready var patch_path_edit: LineEdit = %PatchPath
-@onready var apply_output_path_edit: LineEdit = %ApplyOutputPath
-@onready var make_patch_button: Button = %MakePatchButton
+@onready var base_path_edit: LineEdit = $BaseRow/BasePath
+@onready var project_label: Label = $ProjectLabel
+@onready var project_row: HBoxContainer = $ProjectRow
+@onready var project_path_edit: LineEdit = $ProjectRow/ProjectPath
+@onready var patch_path_edit: LineEdit = $PatchOutputRow/PatchPath
+@onready var apply_output_path_edit: LineEdit = $ApplyOutputRow/ApplyOutputPath
+@onready var make_patch_button: Button = $PatchButtons/MakePatchButton
 
 func set_advanced_enabled(enabled: bool) -> void:
 	project_label.visible = enabled

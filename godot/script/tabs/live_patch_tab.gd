@@ -1,11 +1,11 @@
 extends VBoxContainer
 
-@onready var dev_base_path_edit: LineEdit = %LiveBasePath
-@onready var dev_project_path_edit: LineEdit = %LiveProjectPath
-@onready var dev_patch_path_edit: LineEdit = %LivePatchPath
-@onready var sandbox_path_edit: LineEdit = %LiveSandboxPath
-@onready var interval_edit: LineEdit = %LiveIntervalPath
-@onready var watch_button: Button = %WatchButton
+@onready var dev_base_path_edit: LineEdit = $LiveBaseRow/LiveBasePath
+@onready var dev_project_path_edit: LineEdit = $LiveProjectRow/LiveProjectPath
+@onready var dev_patch_path_edit: LineEdit = $LivePatchRow/LivePatchPath
+@onready var sandbox_path_edit: LineEdit = $LiveSandboxRow/LiveSandboxPath
+@onready var interval_edit: LineEdit = $LiveIntervalPath
+@onready var watch_button: Button = $LiveButtons/WatchButton
 
 func _ready() -> void:
 	var controller := _controller()

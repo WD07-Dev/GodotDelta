@@ -1,8 +1,8 @@
 extends VBoxContainer
 
-@onready var dev_base_path_edit: LineEdit = %DevBasePath
-@onready var dev_project_path_edit: LineEdit = %DevProjectPath
-@onready var sandbox_path_edit: LineEdit = %SandboxPath
+@onready var dev_base_path_edit: LineEdit = $DevBaseRow/DevBasePath
+@onready var dev_project_path_edit: LineEdit = $DevProjectRow/DevProjectPath
+@onready var sandbox_path_edit: LineEdit = $SandboxRow/SandboxPath
 
 func _on_dev_build_pressed() -> void:
 	var controller := _controller()
