@@ -25,7 +25,7 @@ int CliApplication::run(int argc, char **argv) {
 void CliApplication::print_usage() {
     cout
     << "Usage:\n"
-    << "  Supported target runtime: Godot 4.x\n"
+    << "  Supported target runtime: Godot 3.x / 4.x\n"
     << "  gddelta ui\n"
     << "\n"
     << "  Distribution:\n"
@@ -182,13 +182,13 @@ int CliApplication::run_command(std::string_view command, int argc, char **argv)
         if(is_gdmod_input) {
             if(argc >= 5) {
                 commands_.apply_gdmod(argv[2], argv[3], std::filesystem::path(argv[4]));
-            } else {
+            }else {
                 commands_.apply_gdmod(argv[2], argv[3], std::nullopt);
             }
         } else {
             if(argc >= 5) {
                 commands_.build_dev_sandbox_from_pck(argv[2], argv[3], argv[4]);
-            } else {
+            }else {
                 commands_.apply_pck_in_place(argv[2], argv[3]);
             }
         }
@@ -230,8 +230,8 @@ int CliApplication::run_command(std::string_view command, int argc, char **argv)
 
 vector<string> CliApplication::collect_input_paths(int start_index, int argc, char **argv) {
     vector<string> input_paths;
-    for(int index = start_index; index < argc; ++index) {
-        input_paths.emplace_back(argv[index]);
+    for(int i = start_index; i < argc; ++i) {
+        input_paths.emplace_back(argv[i]);
     }
     return input_paths;
 }

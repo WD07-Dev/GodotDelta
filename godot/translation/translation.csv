@@ -1,5 +1,5 @@
 key,en,ko
-APP_SUBHEADER,Patch and apply Godot 4.x projects with the packaged gddelta runtime.,패키지된 gddelta 런타임으로 Godot 4.x 프로젝트를 패치하고 적용합니다.
+APP_SUBHEADER,Patch and apply Godot 3.x / 4.x projects with the packaged gddelta runtime.,패키지된 gddelta 런타임으로 Godot 3.x / 4.x 프로젝트를 패치하고 적용합니다.
 RUNTIME_STATUS_RESOLVING,gddelta: resolving...,gddelta: 확인 중...
 RUNTIME_STATUS_READY,gddelta: %s,gddelta: %s
 RUNTIME_STATUS_MISSING,gddelta executable was not found.,gddelta 실행 파일을 찾지 못했습니다.

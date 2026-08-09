@@ -94,9 +94,7 @@ namespace {
                 if(is_double_star) {
                     regex_pattern += ".*";
                     ++i;
-                }else {
-                    regex_pattern += "[^/]*";
-                }
+                }else regex_pattern += "[^/]*";
                 continue;
             }
 
@@ -136,14 +134,12 @@ namespace {
         std::string line;
         while(std::getline(input, line)) {
             auto trimmed = trim_copy(line);
-            if(trimmed.empty() || trimmed.front() == '#') {
-                continue;
-            }
+            if(trimmed.empty() || trimmed.front() == '#') continue;
             auto mode = IncludeRuleMode::Include;
             if(trimmed.front() == '+') {
                 trimmed.erase(trimmed.begin());
                 trimmed = trim_copy(trimmed);
-            } else if(trimmed.front() == '!') {
+            }else if(trimmed.front() == '!') {
                 mode = IncludeRuleMode::Exclude;
                 trimmed.erase(trimmed.begin());
                 trimmed = trim_copy(trimmed);
@@ -381,11 +377,20 @@ void PckWriter::write_files(
     const std::filesystem::path& output_pck,
     const PckWriteOptions& options
 ) {
-    if(files.empty()) {
+    auto entries = collect_file_entries(files);
+    if(options.format_version == 1) {
+        entries.erase(
+            std::remove_if(entries.begin(), entries.end(), [](const PendingEntry& entry) {
+                return (entry.flags & kPackFileRemoval) != 0;
+            }),
+            entries.end()
+        );
+    }
+
+    if(entries.empty()) {
         throw std::runtime_error("Refusing to write an empty PCK.");
     }
 
-    auto entries = collect_file_entries(files);
     const auto temp_path = output_pck.string() + ".tmp";
     std::ofstream output(temp_path, std::ios::binary | std::ios::trunc);
     if(!output) {
@@ -507,8 +512,47 @@ void PckWriter::write_files(
             output.seekp(offset_positions[index]);
             write_scalar<std::uint64_t>(output, entries[index].offset);
         }
+    }else if(options.format_version == 1) {
+        write_scalar<std::uint32_t>(output, static_cast<std::uint32_t>(entries.size()));
+        std::vector<std::streampos> offset_positions;
+        offset_positions.reserve(entries.size());
+        for(const auto& entry : entries) {
+            const auto raw_length = static_cast<std::uint32_t>(entry.pack_path.size());
+            const auto stored_length = static_cast<std::uint32_t>(align_u64(raw_length, 4));
+            write_scalar<std::uint32_t>(output, stored_length);
+            output.write(entry.pack_path.data(), static_cast<std::streamsize>(entry.pack_path.size()));
+            write_padding(output, stored_length - raw_length);
+            offset_positions.push_back(output.tellp());
+            write_scalar<std::uint64_t>(output, 0);
+            write_scalar<std::uint64_t>(output, entry.size);
+            output.write(reinterpret_cast<const char *>(entry.md5.data()), static_cast<std::streamsize>(entry.md5.size()));
+        }
+
+        const auto files_start = align_u64(static_cast<std::uint64_t>(output.tellp()), options.alignment);
+        write_padding(output, files_start - static_cast<std::uint64_t>(output.tellp()));
+
+        for(std::size_t index = 0; index < entries.size(); ++index) {
+            auto& entry = entries[index];
+            entry.offset = static_cast<std::uint64_t>(output.tellp());
+            const auto& source = entries[index];
+            if(!source.inline_data.empty()) {
+                write_inline_bytes(source.inline_data, output);
+            }else if(!source.source_pack_path.empty()) {
+                copy_file_range_bytes(source.source_pack_path, source.source_offset, source.size, output);
+            }else {
+                copy_file_bytes(source.source_path, output);
+            }
+
+            const auto next_position = align_u64(static_cast<std::uint64_t>(output.tellp()), options.alignment);
+            write_padding(output, next_position - static_cast<std::uint64_t>(output.tellp()));
+        }
+
+        for(std::size_t index = 0; index < entries.size(); ++index) {
+            output.seekp(offset_positions[index]);
+            write_scalar<std::uint64_t>(output, entries[index].offset);
+        }
     } else {
-        throw std::runtime_error("Only PCK format v2/v3/v4 writing is implemented right now.");
+        throw std::runtime_error("Only PCK format v1/v2/v3/v4 writing is implemented right now.");
     }
 
     output.flush();
