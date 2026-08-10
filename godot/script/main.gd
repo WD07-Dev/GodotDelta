@@ -17,6 +17,9 @@ var watch_log_poll_accumulator := 0.0
 var command_thread: Thread = null
 var command_running := false
 var command_completion: Callable = Callable()
+var command_log_path := ""
+var command_log_position := 0
+var command_log_poll_accumulator := 0.0
 
 func _ready() -> void:
 	gddelta_executable_path = _default_gddelta_path()
@@ -27,6 +30,7 @@ func _exit_tree() -> void:
 	stop_watch_process()
 
 func _process(delta: float) -> void:
+	_poll_command_log(delta)
 	_poll_command_thread()
 
 	if(watch_pid == -1): return;
@@ -68,15 +72,19 @@ func run_gddelta(args: Array, completion: Callable = Callable()) -> int:
 
 	append_log("> " + executable + " " + " ".join(args))
 	append_log(tr("GDDELTA_COMMAND_STARTED"))
+	var command_args := PackedStringArray(args)
+	command_args.append("--log-file")
+	command_args.append(_resolve_command_log_path())
 	command_thread = Thread.new()
 	command_running = true
 	command_completion = completion
 	_set_command_controls_enabled(false)
-	var error := command_thread.start(_run_gddelta_worker.bind(executable, PackedStringArray(args)))
+	var error := command_thread.start(_run_gddelta_worker.bind(executable, command_args))
 	if(error != OK):
 		command_thread = null
 		command_running = false
 		command_completion = Callable()
+		_reset_command_log_state()
 		_set_command_controls_enabled(true)
 		append_log(tr("FAILED_TO_START_GDDELTA_COMMAND_THREAD"))
 		return error
@@ -250,6 +258,14 @@ func _resolve_watch_log_path(sandbox_dir: String) -> String:
 	watch_log_poll_accumulator = 0.0
 	return log_file_path
 
+func _resolve_command_log_path() -> String:
+	var log_file_path := OS.get_user_data_dir().path_join(".gddelta_command.log")
+	_ensure_watch_log_file(log_file_path)
+	command_log_path = log_file_path
+	command_log_position = 0
+	command_log_poll_accumulator = 0.0
+	return log_file_path
+
 func _ensure_watch_log_file(path: String) -> void:
 	var dir_path := path.get_base_dir()
 	if(!dir_path.is_empty()):
@@ -263,20 +279,42 @@ func _reset_watch_log_state() -> void:
 	watch_log_position = 0
 	watch_log_poll_accumulator = 0.0
 
+func _reset_command_log_state() -> void:
+	command_log_path = ""
+	command_log_position = 0
+	command_log_poll_accumulator = 0.0
+
+func _poll_command_log(delta: float) -> void:
+	if(!command_running): return;
+	if(command_log_path.is_empty() || !FileAccess.file_exists(command_log_path)): return;
+
+	command_log_poll_accumulator += delta
+	if(command_log_poll_accumulator < 0.1): return;
+
+	command_log_poll_accumulator = 0.0
+	_poll_log_file(command_log_path, "command")
+
 func _poll_watch_log() -> void:
 	if(watch_log_path.is_empty() || !FileAccess.file_exists(watch_log_path)): return;
+	_poll_log_file(watch_log_path, "watch")
 
-	var file := FileAccess.open(watch_log_path, FileAccess.READ)
+func _poll_log_file(path: String, kind: String) -> void:
+	var file := FileAccess.open(path, FileAccess.READ)
 	if(file == null): return;
 
 	var file_length := file.get_length()
-	if(watch_log_position > file_length):
-		watch_log_position = 0
-	if(watch_log_position == file_length): return;
+	var position := watch_log_position if kind == "watch" else command_log_position
+	if(position > file_length):
+		position = 0
+	if(position == file_length): return;
 
-	file.seek(watch_log_position)
-	var chunk := file.get_buffer(file_length - watch_log_position).get_string_from_utf8()
-	watch_log_position = file.get_position()
+	file.seek(position)
+	var chunk := file.get_buffer(file_length - position).get_string_from_utf8()
+	position = file.get_position()
+	if(kind == "watch"):
+		watch_log_position = position
+	else:
+		command_log_position = position
 	for line in chunk.split("\n", false):
 		append_log(line.rstrip("\r"))
 
@@ -312,7 +350,6 @@ func _run_gddelta_worker(executable: String, args: PackedStringArray) -> Diction
 	var exit_code := OS.execute(executable, args, output, true, false)
 	return {
 		"exit_code": exit_code,
-		"output": output,
 	}
 
 func _poll_command_thread() -> void:
@@ -322,19 +359,14 @@ func _poll_command_thread() -> void:
 	var result: Variant = command_thread.wait_to_finish()
 	command_thread = null
 	command_running = false
+	_poll_log_file(command_log_path, "command")
+	_reset_command_log_state()
 	_set_command_controls_enabled(true)
 
-	var output: Array = []
 	var exit_code := ERR_BUG
 	if(result is Dictionary):
-		output = result.get("output", [])
 		exit_code = int(result.get("exit_code", ERR_BUG))
 
-	if(output.is_empty()):
-		append_log(tr("NO_OUTPUT"))
-	else:
-		for line in output:
-			append_log(str(line))
 	append_log(tr("EXIT_CODE") % exit_code)
 
 	var completion := command_completion

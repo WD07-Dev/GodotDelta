@@ -1,7 +1,54 @@
 #include "cli.app.h"
+#include<fstream>
 #include<iostream>
 #include<stdexcept>
 using namespace std;
+
+namespace {
+    class ScopedLogRedirect {
+        public:
+            explicit ScopedLogRedirect(const std::optional<std::filesystem::path>& log_file_path) {
+                if(!log_file_path.has_value()) return;
+
+                const auto parent_path = log_file_path->parent_path();
+                if(!parent_path.empty()) {
+                    std::filesystem::create_directories(parent_path);
+                }
+
+                stream_.open(*log_file_path, std::ios::out | std::ios::trunc);
+                if(!stream_) {
+                    throw std::runtime_error("Failed to open log file: " + log_file_path->string());
+                }
+
+                old_cout_ = std::cout.rdbuf(stream_.rdbuf());
+                old_cerr_ = std::cerr.rdbuf(stream_.rdbuf());
+                old_cout_flags_ = std::cout.flags();
+                old_cerr_flags_ = std::cerr.flags();
+                std::cout.setf(std::ios::unitbuf);
+                std::cerr.setf(std::ios::unitbuf);
+            }
+
+            ~ScopedLogRedirect() {
+                std::cout.flush();
+                std::cerr.flush();
+                if(old_cout_ != nullptr) {
+                    std::cout.rdbuf(old_cout_);
+                    std::cout.flags(old_cout_flags_);
+                }
+                if(old_cerr_ != nullptr) {
+                    std::cerr.rdbuf(old_cerr_);
+                    std::cerr.flags(old_cerr_flags_);
+                }
+            }
+
+        private:
+            std::ofstream stream_;
+            std::streambuf* old_cout_ = nullptr;
+            std::streambuf* old_cerr_ = nullptr;
+            std::ios::fmtflags old_cout_flags_{};
+            std::ios::fmtflags old_cerr_flags_{};
+    };
+}
 
 CliApplication::CliApplication():
     commands_(support_) {
@@ -15,6 +62,16 @@ int CliApplication::run(int argc, char **argv) {
         return 1;
     }
 
+    std::optional<std::filesystem::path> log_file_path;
+    if(argc >= 4 && std::string_view(argv[argc - 2]) == "--log-file") {
+        if(std::string_view(argv[argc - 1]).empty()) {
+            throw std::runtime_error("Invalid log file option. Expected --log-file <path>.");
+        }
+        log_file_path = std::filesystem::path(argv[argc - 1]);
+        argc -= 2;
+    }
+
+    ScopedLogRedirect log_redirect(log_file_path);
     return run_command(argv[1], argc, argv);
 }
 
