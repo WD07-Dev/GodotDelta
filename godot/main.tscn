@@ -130,7 +130,7 @@ placeholder_text = "PLACEHOLDER_PATCH_PATH"
 layout_mode = 2
 text = "BROWSE"
 
-[node name="OverwriteCheckBox" type="CheckBox" parent="Margin/Root/Tabs/Patch"]
+[node name="OverwriteCheckBox" type="CheckBox" parent="Margin/Root/Tabs/Patch" unique_id=643544357]
 layout_mode = 2
 button_pressed = true
 text = "OVERWRITE_BASE"
