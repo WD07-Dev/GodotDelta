@@ -915,6 +915,35 @@ std::unordered_map<std::string, std::filesystem::path> CliSupport::compile_gdscr
     return compiled_outputs;
 }
 
+std::filesystem::path CliSupport::convert_project_config_to_binary(
+    const std::filesystem::path& source_file,
+    const std::filesystem::path& output_dir
+) const {
+    std::filesystem::create_directories(output_dir);
+
+    const auto source_extension = to_lower_copy(source_file.extension().string());
+    const auto output_file_name = source_extension == ".godot"
+        ? (source_file.stem().string() + ".binary")
+        : (source_file.stem().string() + ".cfb");
+    const auto output_path = output_dir / output_file_name;
+
+    std::cout
+    << "Converting project config " << source_file
+    << " -> " << output_path << "\n";
+
+    static_cast<void>(run_gdre_tools_command({
+        "--headless",
+        "--txt-to-bin=" + source_file.string(),
+        "--output=" + output_dir.string(),
+    }));
+
+    if(!std::filesystem::exists(output_path)) {
+        throw std::runtime_error("Failed to convert project config to binary: " + source_file.string());
+    }
+
+    return output_path;
+}
+
 void CliSupport::compose_pck_from_project_files(
     const std::filesystem::path& base_pck,
     const std::vector<gddelta::pck::PckWriteFile>& files,
@@ -961,6 +990,12 @@ void CliSupport::compose_pck_from_project_files(
 
     std::vector<std::string> patch_args;
     for(const auto& file : files) {
+        if(file.pack_path == "project.godot") {
+            const auto converted_config = convert_project_config_to_binary(file.source_path, compiled_dir / "project_config");
+            patch_args.push_back("--patch-file=" + converted_config.string() + "=res://project.binary");
+            continue;
+        }
+
         if(file.source_path.extension() == ".gd") {
             const auto gd_entry = base_reader.find_entry("res://" + file.pack_path);
             if(gd_entry.has_value() && !is_godot3) {
@@ -1093,29 +1128,39 @@ std::filesystem::path CliSupport::prepare_runtime_patch_files_for_write(
         gd_files.push_back(file.source_path);
         gd_pack_sources[file.pack_path] = file.source_path;
     }
-    if(gd_files.empty()) return {};
-
     const auto timestamp = std::chrono::steady_clock::now().time_since_epoch().count();
     const auto temp_root = std::filesystem::temp_directory_path() / (".gddelta_compiled_patch_" + std::to_string(timestamp));
-    const auto compiled_dir = temp_root / "compiled";
-    std::filesystem::create_directories(compiled_dir);
+    std::filesystem::create_directories(temp_root);
 
-    const auto compiled_outputs = compile_gdscript_files(base_pck, gd_files, compiled_dir);
-    for(auto& file : files) {
-        if(file.removal || file.source_path.extension() != ".gdc") continue;
+    if(!gd_files.empty()) {
+        const auto compiled_dir = temp_root / "compiled";
+        std::filesystem::create_directories(compiled_dir);
 
-        auto gd_pack_path = std::filesystem::path(file.pack_path);
-        gd_pack_path.replace_extension(".gd");
-        const auto gd_it = gd_pack_sources.find(gd_pack_path.generic_string());
-        if(gd_it == gd_pack_sources.end()) continue;
+        const auto compiled_outputs = compile_gdscript_files(base_pck, gd_files, compiled_dir);
+        for(auto& file : files) {
+            if(file.removal || file.source_path.extension() != ".gdc") continue;
 
-        const auto compiled_it = compiled_outputs.find(gd_it->second.generic_string());
-        if(compiled_it == compiled_outputs.end()) {
-            remove_all_if_exists(temp_root);
-            throw std::runtime_error("Failed to locate compiled GDScript bytecode output for: " + gd_it->second.string());
+            auto gd_pack_path = std::filesystem::path(file.pack_path);
+            gd_pack_path.replace_extension(".gd");
+            const auto gd_it = gd_pack_sources.find(gd_pack_path.generic_string());
+            if(gd_it == gd_pack_sources.end()) continue;
+
+            const auto compiled_it = compiled_outputs.find(gd_it->second.generic_string());
+            if(compiled_it == compiled_outputs.end()) {
+                remove_all_if_exists(temp_root);
+                throw std::runtime_error("Failed to locate compiled GDScript bytecode output for: " + gd_it->second.string());
+            }
+
+            file.source_path = compiled_it->second;
         }
+    }
 
-        file.source_path = compiled_it->second;
+    for(auto& file : files) {
+        if(file.removal || file.pack_path != "project.godot") continue;
+
+        const auto converted_config = convert_project_config_to_binary(file.source_path, temp_root / "project_config");
+        file.pack_path = "project.binary";
+        file.source_path = converted_config;
     }
 
     return temp_root;
@@ -1139,10 +1184,7 @@ BaseInputPaths CliSupport::resolve_base_input(const std::filesystem::path& base_
     BaseInputPaths resolved;
     resolved.requested_path = base_path;
     resolved.pack_path = base_path;
-
-    if(base_path.extension() != ".exe") {
-        return resolved;
-    }
+    if(base_path.extension() != ".exe") return resolved;
 
     if(gddelta::pck::EmbeddedPckHandler::find_embedded_pck(base_path).has_value()) {
         return resolved;

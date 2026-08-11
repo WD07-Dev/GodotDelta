@@ -65,6 +65,10 @@ namespace cli_internal {
                 const std::vector<std::filesystem::path>& source_files,
                 const std::filesystem::path& output_dir
             ) const;
+            [[nodiscard]] std::filesystem::path convert_project_config_to_binary(
+                const std::filesystem::path& source_file,
+                const std::filesystem::path& output_dir
+            ) const;
             void compose_pck_from_project_files(
                 const std::filesystem::path& base_pck,
                 const std::vector<gddelta::pck::PckWriteFile>& files,
