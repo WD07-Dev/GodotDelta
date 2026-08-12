@@ -41,7 +41,7 @@ Unlike a generic binary delta patcher, GodotDelta works around Godot package str
 
 Patch `.pck` is the plain runtime patch format.
 
-- Created with `gddelta make-pck`
+- Created with `gddelta make`
 - Applied with `gddelta apply`
 - Best for direct testing, debugging, or use with external loaders such as GodotMods
 
@@ -50,25 +50,14 @@ Patch `.pck` is the plain runtime patch format.
 ### Build A `gdmod`
 
 ```bash
-gddelta make <base.pck|base.exe> <project_dir> <output.gdmod>
+gddelta make <base.pck|base.exe> <project_dir> <output.gdmod|output.pck>
 ```
 
 Example:
 
 ```bash
 gddelta make game.exe my_mod_project rom_battle.gdmod
-```
-
-### Build A Patch PCK
-
-```bash
-gddelta make-pck <base.pck|base.exe> <project_dir> <output.pck>
-```
-
-Example:
-
-```bash
-gddelta make-pck game.exe my_mod_project rom_battle_patch.pck
+gddelta make game.exe my_mod_project rom_battle_patch.pck
 ```
 
 ### Apply A Package
@@ -91,6 +80,21 @@ Examples:
 gddelta apply game.exe rom_battle_patch.pck
 gddelta apply game.exe rom_battle.gdmod
 gddelta apply game.exe rom_battle_patch.pck output/dev-runtime
+gddelta apply game.exe rom_battle.gdmod recovered_patch.pck
+```
+
+### Extract A Patch PCK From `gdmod`
+
+Recover a plain patch `.pck` from a protected `gdmod`:
+
+```bash
+gddelta extract <base.pck|base.exe> <input.gdmod> <output.pck>
+```
+
+Example:
+
+```bash
+gddelta extract game.exe rom_battle.gdmod recovered_patch.pck
 ```
 
 ### Build A Dev Sandbox
