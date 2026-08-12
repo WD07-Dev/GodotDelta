@@ -54,7 +54,7 @@ void RuntimePatchResolver::warn_if_runtime_is_stale() const {
     << "Warning: project runtime artifacts look stale.\n"
     << "Newest source: " << newest_source->path << "\n"
     << "Newest exported marker: " << newest_export->path << "\n"
-    << "Run the project/export refresh in Godot before make-pck/compose if changes are not applied.\n";
+    << "Run the project/export refresh in Godot before make/compose if changes are not applied.\n";
 }
 
 std::vector<gddelta::pck::PckWriteFile> RuntimePatchResolver::collect_patch_files(const std::vector<std::string>& input_paths) const {

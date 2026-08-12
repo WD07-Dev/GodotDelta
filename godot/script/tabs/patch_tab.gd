@@ -30,16 +30,13 @@ func _on_make_patch_pressed() -> void:
 	])): return;
 
 	var output_path := patch_path_edit.text.strip_edges()
-	var command := "make"
 	var extension := output_path.get_extension().to_lower()
-	if(extension == "pck"):
-		command = "make-pck"
-	elif(extension.is_empty()):
+	if(extension.is_empty()):
 		output_path += ".gdmod"
 		patch_path_edit.text = output_path
 
 	controller.run_gddelta([
-		command,
+		"make",
 		base_path_edit.text,
 		project_path_edit.text,
 		output_path,

@@ -82,7 +82,7 @@ void CliApplication::print_usage() {
     << "  gddelta ui\n"
     << "\n"
     << "  Distribution:\n"
-    << "  gddelta make <base.pck|base.exe> <project_dir> <output.gdmod>\n"
+    << "  gddelta make <base.pck|base.exe> <project_dir> <output.gdmod|output.pck>\n"
     << "  gddelta apply <base.pck|base.exe> <input.pck|input.gdmod> [sandbox_dir]\n"
     << "  gddelta extract <base.pck|base.exe> <input.gdmod> <output.pck>\n"
     << "\n"
@@ -96,7 +96,6 @@ void CliApplication::print_usage() {
     << "  gddelta inspect <input.pck|input.exe>\n"
     << "  gddelta diff <base_dir> <modified_dir>\n"
     << "  gddelta patch <base_dir> <modified_dir> <output.pck>\n"
-    << "  gddelta make-pck <base.pck|base.exe> <project_dir> <output.pck>\n"
     << "  gddelta compose <base.pck|base.exe> <patch.pck|project_dir> <output.pck|output.exe>\n";
 }
 
@@ -199,7 +198,12 @@ int CliApplication::run_command(std::string_view command, int argc, char **argv)
 
     if(command == "make") {
         if(!require_arg_count(argc, 5)) return 1;
-        commands_.build_gdmod(argv[2], argv[3], argv[4]);
+        const auto output_path = std::filesystem::path(argv[4]);
+        if(output_path.extension() == ".pck") {
+            commands_.build_patch_pck_auto(argv[2], argv[3], output_path);
+        } else {
+            commands_.build_gdmod(argv[2], argv[3], output_path);
+        }
         return 0;
     }
 
