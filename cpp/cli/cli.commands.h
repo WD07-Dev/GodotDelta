@@ -75,6 +75,11 @@ class CliCommands {
             const std::filesystem::path& gdmod_path,
             const std::optional<std::filesystem::path>& sandbox_dir
         );
+        void extract_gdmod_to_pck(
+            const std::filesystem::path& base_pck,
+            const std::filesystem::path& gdmod_path,
+            const std::filesystem::path& output_pck
+        );
         void watch_dev_sandbox_from_patch_pck(
             const std::filesystem::path& base_pck,
             const std::filesystem::path& project_dir,

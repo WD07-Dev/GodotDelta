@@ -312,6 +312,38 @@ void CliCommands::apply_gdmod(
     std::cout << "[4/4] Finished applying gdmod\n";
 }
 
+void CliCommands::extract_gdmod_to_pck(
+    const std::filesystem::path& base_pck,
+    const std::filesystem::path& gdmod_path,
+    const std::filesystem::path& output_pck
+) {
+    gddelta::patch::GdmodPackage package;
+    std::cout << "[1/3] Reading gdmod manifest\n";
+    const auto manifest = package.read_manifest(gdmod_path);
+    const auto resolved_base = support_.resolve_base_input(base_pck);
+
+    std::cout
+    << "Recovering patch PCK from gdmod " << gdmod_path
+    << " built for " << manifest.base_file_name
+    << " (" << manifest.engine_major << "." << manifest.engine_minor << "." << manifest.engine_patch << ")\n";
+
+    if(manifest.base_file_name != resolved_base.pack_path.filename().string()) {
+        std::cerr
+        << "Warning: gdmod target base is " << manifest.base_file_name
+        << ", but requested base is " << resolved_base.pack_path.filename().string() << "\n";
+    }
+
+    std::cout << "[2/3] Recovering patch payload from gdmod\n";
+    if(manifest.legacy_plain_payload) {
+        package.extract_patch_pck(gdmod_path, output_pck);
+    } else {
+        package.extract_protected_patch_pck(resolved_base.pack_path, gdmod_path, output_pck);
+    }
+
+    std::cout
+    << "[3/3] Wrote recovered patch PCK to " << output_pck << "\n";
+}
+
 void CliCommands::watch_dev_sandbox_from_patch_pck(
     const std::filesystem::path& base_pck,
     const std::filesystem::path& project_dir,
