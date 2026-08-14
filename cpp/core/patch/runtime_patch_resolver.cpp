@@ -85,7 +85,10 @@ void RuntimePatchResolver::warn_if_runtime_is_stale() const {
     << "Run the project/export refresh in Godot before make/compose if changes are not applied.\n";
 }
 
-std::vector<gddelta::pck::PckWriteFile> RuntimePatchResolver::collect_patch_files(const std::vector<std::string>& input_paths) const {
+std::vector<gddelta::pck::PckWriteFile> RuntimePatchResolver::collect_patch_files(
+    const std::vector<std::string>& input_paths,
+    bool legacy_simple
+) const {
     std::vector<pck::PckWriteFile> files;
     std::queue<std::string> pending_inputs;
     std::unordered_set<std::string> seen_inputs;
@@ -131,6 +134,41 @@ std::vector<gddelta::pck::PckWriteFile> RuntimePatchResolver::collect_patch_file
     while(!pending_inputs.empty()) {
         const auto normalized = pending_inputs.front();
         pending_inputs.pop();
+
+        if(legacy_simple) {
+            add_file(normalized);
+
+            const auto full_path = project_dir_ / gddelta::common::path_from_utf8(normalized);
+            const auto extension = gddelta::common::path_to_utf8(full_path.extension());
+            if(extension == ".gd") {
+                const auto gdc_path = replace_virtual_extension(normalized, ".gdc");
+                const auto autoconverted_gdc = project_dir_ / ".autoconverted" / gddelta::common::path_from_utf8(gdc_path);
+                if(std::filesystem::exists(autoconverted_gdc)) {
+                    add_existing_file(gdc_path, autoconverted_gdc);
+                }else {
+                    add_optional_file(gdc_path);
+                }
+            }
+
+            add_optional_file(normalized + ".remap");
+            add_optional_file(normalized + ".uid");
+            add_optional_file(normalized + ".import");
+            for(const auto& import_output : collect_import_outputs(normalized)) {
+                add_optional_file(import_output);
+            }
+
+            const auto export_it = export_map_.find(normalized);
+            if(export_it != export_map_.end()) {
+                add_optional_file(export_it->second);
+            }
+
+            for(const auto& reference : collect_text_resource_references(normalized)) {
+                if(seen_inputs.insert(reference).second) {
+                    pending_inputs.push(reference);
+                }
+            }
+            continue;
+        }
 
         const auto full_path = project_dir_ / gddelta::common::path_from_utf8(normalized);
         const auto extension = gddelta::common::path_to_utf8(full_path.extension());

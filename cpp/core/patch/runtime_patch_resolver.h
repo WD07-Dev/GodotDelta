@@ -20,7 +20,9 @@ namespace gddelta::patch {
             explicit RuntimePatchResolver(std::filesystem::path project_dir);
             void warn_if_runtime_is_stale() const;
             [[nodiscard]] std::vector<pck::PckWriteFile> collect_patch_files(
-            const std::vector<std::string> &input_paths) const;
+                const std::vector<std::string> &input_paths,
+                bool legacy_simple = false
+            ) const;
             [[nodiscard]] std::vector<std::string> collect_auto_input_paths(
                 const pck::PckReader& base_reader
             ) const;

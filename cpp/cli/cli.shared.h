@@ -71,7 +71,8 @@ namespace cli_internal {
             [[nodiscard]] CompiledGDScriptOutputs compile_gdscript_files(
                 const std::filesystem::path& base_pck,
                 const std::vector<std::filesystem::path>& source_files,
-                const std::filesystem::path& output_dir
+                const std::filesystem::path& output_dir,
+                bool allow_partial_failures = true
             ) const;
             [[nodiscard]] std::filesystem::path convert_project_config_to_binary(
                 const std::filesystem::path& source_file,
@@ -89,7 +90,8 @@ namespace cli_internal {
             [[nodiscard]] std::vector<gddelta::pck::PckWriteFile> collect_runtime_patch_files(
                 const std::filesystem::path& base_pck,
                 const std::filesystem::path& project_dir,
-                const std::vector<std::string>& input_paths
+                const std::vector<std::string>& input_paths,
+                bool legacy_simple = false
             ) const;
             [[nodiscard]] PreparedRuntimePatchFiles prepare_runtime_patch_files(
                 const std::filesystem::path& base_pck,
@@ -99,10 +101,16 @@ namespace cli_internal {
             ) const;
             [[nodiscard]] std::filesystem::path prepare_runtime_patch_files_for_write(
                 const std::filesystem::path& base_pck,
+                std::vector<gddelta::pck::PckWriteFile>& files,
+                bool legacy_simple = false
+            ) const;
+            void normalize_runtime_patch_files_for_base(
+                const std::filesystem::path& base_pck,
                 std::vector<gddelta::pck::PckWriteFile>& files
             ) const;
             [[nodiscard]] std::vector<std::string> collect_project_source_inputs(
-                const std::filesystem::path& project_dir
+                const std::filesystem::path& project_dir,
+                bool legacy_full_scan = false
             ) const;
             BaseInputPaths resolve_base_input(const std::filesystem::path& base_path) const;
             std::filesystem::path create_temporary_base_copy(const std::filesystem::path& base_pck) const;

@@ -87,76 +87,95 @@ namespace {
         return backup_output;
     }
 
-    cli_internal::PreparedRuntimePatchFiles collect_legacy_dev_sandbox_files(
-        const cli_internal::CliSupport& support,
-        const std::filesystem::path& base_pck,
-        const std::filesystem::path& project_dir
-    ) {
-        std::cout << "[legacy] Scanning project inputs\n";
-        gddelta::patch::RuntimePatchResolver resolver(project_dir);
-        resolver.warn_if_runtime_is_stale();
-        const auto input_paths = support.collect_project_source_inputs(project_dir);
-        support.print_rebuild_paths("Legacy runtime patch inputs", input_paths);
-        std::cout << "[legacy] Preparing runtime patch files from " << input_paths.size() << " input(s)\n";
-
-        auto prepared = support.prepare_runtime_patch_files(
-            base_pck,
-            project_dir,
-            input_paths,
-            true
-        );
-        if(prepared.files.empty()) {
-            throw std::runtime_error("No runtime-related files were found for the requested paths.");
-        }
-        return prepared;
-    }
-
-    cli_internal::PreparedRuntimePatchFiles extract_legacy_patch_pack_files(
-        const std::filesystem::path& patch_pck
-    ) {
-        cli_internal::PreparedRuntimePatchFiles prepared;
-        gddelta::pck::PckReader reader;
-        reader.open(patch_pck);
-
-        const auto timestamp = std::chrono::steady_clock::now().time_since_epoch().count();
-        prepared.temp_dir = std::filesystem::temp_directory_path() / (".gddelta_legacy_patch_" + std::to_string(timestamp));
-        std::filesystem::create_directories(prepared.temp_dir);
-
-        for(const auto& entry : reader.entries()) {
-            if((entry.flags & gddelta::pck::kPackFileRemoval) != 0) {
-                throw std::runtime_error("Legacy v1 apply path does not support removal entries in patch packs.");
+    class LegacyV1Pipeline {
+        public:
+            explicit LegacyV1Pipeline(const cli_internal::CliSupport& support):
+                support_(support) {
             }
 
-            const auto normalized_path = gddelta::common::normalize_pack_relative_path(entry.path);
-            if(normalized_path.empty()) {
-                throw std::runtime_error("Legacy patch pack contains an invalid empty entry path.");
+            [[nodiscard]] cli_internal::PreparedRuntimePatchFiles collect_dev_sandbox_files(
+                const std::filesystem::path& base_pck,
+                const std::filesystem::path& project_dir
+            ) const {
+                std::cout << "[legacy] Scanning project inputs\n";
+                gddelta::patch::RuntimePatchResolver resolver(project_dir);
+                resolver.warn_if_runtime_is_stale();
+                const auto input_paths = support_.collect_project_source_inputs(project_dir, true);
+                support_.print_rebuild_paths("Legacy runtime patch inputs", input_paths);
+                std::cout << "[legacy] Preparing runtime patch files from " << input_paths.size() << " input(s)\n";
+
+                cli_internal::PreparedRuntimePatchFiles prepared;
+                prepared.files = support_.collect_runtime_patch_files(base_pck, project_dir, input_paths, true);
+                if(!prepared.files.empty()) {
+                    prepared.temp_dir = support_.prepare_runtime_patch_files_for_write(base_pck, prepared.files, true);
+                    support_.normalize_runtime_patch_files_for_base(base_pck, prepared.files);
+                }
+                if(prepared.files.empty()) {
+                    throw std::runtime_error("No runtime-related files were found for the requested paths.");
+                }
+                return prepared;
             }
 
-            const auto relative_path = std::filesystem::path(normalized_path);
-            const auto destination_path = prepared.temp_dir / relative_path;
-            std::filesystem::create_directories(destination_path.parent_path());
-
-            const auto bytes = reader.read_entry_data(entry);
-            std::ofstream file(destination_path, std::ios::binary | std::ios::trunc);
-            if(!file) {
-                throw std::runtime_error("Failed to write extracted legacy patch file: " + destination_path.string());
-            }
-            file.write(reinterpret_cast<const char*>(bytes.data()), static_cast<std::streamsize>(bytes.size()));
-            if(!file) {
-                throw std::runtime_error("Failed to write extracted legacy patch file: " + destination_path.string());
+            void build_dev_sandbox(
+                const std::filesystem::path& base_pck,
+                const std::filesystem::path& project_dir,
+                const std::filesystem::path& sandbox_output
+            ) const {
+                const auto prepared = collect_dev_sandbox_files(base_pck, project_dir);
+                std::cout << "[dev-build] Composing legacy sandbox output\n";
+                support_.compose_pck_from_project_files(base_pck, prepared.files, sandbox_output);
             }
 
-            gddelta::pck::PckWriteFile write_file;
-            write_file.pack_path = relative_path.generic_string();
-            write_file.source_path = destination_path;
-            prepared.files.push_back(std::move(write_file));
-        }
+            [[nodiscard]] cli_internal::PreparedRuntimePatchFiles extract_patch_pack(
+                const std::filesystem::path& patch_pck
+            ) const {
+                cli_internal::PreparedRuntimePatchFiles prepared;
+                gddelta::pck::PckReader reader;
+                reader.open(patch_pck);
 
-        if(prepared.files.empty()) {
-            throw std::runtime_error("No runtime-related files were found in the legacy patch pack.");
-        }
-        return prepared;
-    }
+                const auto timestamp = std::chrono::steady_clock::now().time_since_epoch().count();
+                prepared.temp_dir = std::filesystem::temp_directory_path() / (".gddelta_legacy_patch_" + std::to_string(timestamp));
+                std::filesystem::create_directories(prepared.temp_dir);
+
+                for(const auto& entry : reader.entries()) {
+                    if((entry.flags & gddelta::pck::kPackFileRemoval) != 0) {
+                        throw std::runtime_error("Legacy v1 apply path does not support removal entries in patch packs.");
+                    }
+
+                    const auto normalized_path = gddelta::common::normalize_pack_relative_path(entry.path);
+                    if(normalized_path.empty()) {
+                        throw std::runtime_error("Legacy patch pack contains an invalid empty entry path.");
+                    }
+
+                    const auto relative_path = std::filesystem::path(normalized_path);
+                    const auto destination_path = prepared.temp_dir / relative_path;
+                    std::filesystem::create_directories(destination_path.parent_path());
+
+                    const auto bytes = reader.read_entry_data(entry);
+                    std::ofstream file(destination_path, std::ios::binary | std::ios::trunc);
+                    if(!file) {
+                        throw std::runtime_error("Failed to write extracted legacy patch file: " + destination_path.string());
+                    }
+                    file.write(reinterpret_cast<const char*>(bytes.data()), static_cast<std::streamsize>(bytes.size()));
+                    if(!file) {
+                        throw std::runtime_error("Failed to write extracted legacy patch file: " + destination_path.string());
+                    }
+
+                    gddelta::pck::PckWriteFile write_file;
+                    write_file.pack_path = relative_path.generic_string();
+                    write_file.source_path = destination_path;
+                    prepared.files.push_back(std::move(write_file));
+                }
+
+                if(prepared.files.empty()) {
+                    throw std::runtime_error("No runtime-related files were found in the legacy patch pack.");
+                }
+                return prepared;
+            }
+
+        private:
+            const cli_internal::CliSupport& support_;
+    };
 }
 
 void CliCommands::compose_pck(
@@ -178,8 +197,9 @@ void CliCommands::compose_pck(
         std::cout << "[compose 2/2] Merging project patch files into output\n";
         support_.compose_pck_from_project_files(base_pck, prepared.files, output_pck);
     }else if(support_.is_legacy_v1_pack(base_pck)) {
+        const LegacyV1Pipeline legacy_pipeline(support_);
         std::cout << "[compose 1/2] Extracting legacy patch pack files\n";
-        const auto prepared = extract_legacy_patch_pack_files(patch_pck);
+        const auto prepared = legacy_pipeline.extract_patch_pack(patch_pck);
         std::cout << "[compose 2/2] Merging legacy patch files into output\n";
         support_.compose_pck_from_project_files(base_pck, prepared.files, output_pck);
     }else {
@@ -222,17 +242,15 @@ void CliCommands::build_dev_sandbox(
 
     try {
         if(support_.is_legacy_v1_pack(base_pck)) {
-            std::cout << "[dev-build] Building legacy runtime patch PCK\n";
+            const LegacyV1Pipeline legacy_pipeline(support_);
+            std::cout << "[dev-build] Building legacy dev sandbox\n";
+            legacy_pipeline.build_dev_sandbox(base_pck, project_dir, sandbox_output);
         }else {
             std::cout << "[dev-build] Building runtime patch PCK\n";
-        }
-        build_patch_pck_auto(base_pck, project_dir, runtime_patch_output);
-        if(support_.is_legacy_v1_pack(base_pck)) {
-            std::cout << "[dev-build] Composing legacy sandbox output\n";
-        }else {
+            build_patch_pck_auto(base_pck, project_dir, runtime_patch_output);
             std::cout << "[dev-build] Composing sandbox output\n";
+            compose_pck(base_pck, runtime_patch_output, sandbox_output);
         }
-        compose_pck(base_pck, runtime_patch_output, sandbox_output);
         support_.copy_runtime_support_files(resolved_base.pack_path, sandbox_dir);
     } catch(...) {
         remove_if_exists(runtime_patch_output);
@@ -445,6 +463,8 @@ void CliCommands::watch_dev_sandbox(
 ) {
     const ScopedLogRedirect log_redirect(log_file_path);
     build_dev_sandbox(base_pck, project_dir, sandbox_dir);
+    const auto legacy_v1 = support_.is_legacy_v1_pack(base_pck);
+    const LegacyV1Pipeline legacy_pipeline(support_);
     const auto resolved_base = support_.resolve_base_input(base_pck);
     const auto runtime_patch_output = resolve_dev_patch_output(sandbox_dir, resolved_base.pack_path);
     const auto sandbox_output = sandbox_dir / resolved_base.pack_path.filename();
@@ -462,8 +482,12 @@ void CliCommands::watch_dev_sandbox(
         try {
             std::cout << "Workspace/runtime diff changed, rebuilding development patch state: " << sandbox_dir << "\n";
             support_.print_rebuild_paths("Runtime patch inputs", dirty_paths);
-            build_patch_pck_from_inputs(base_pck, project_dir, runtime_patch_output, dirty_paths);
-            compose_pck(base_pck, runtime_patch_output, sandbox_output);
+            if(legacy_v1) {
+                legacy_pipeline.build_dev_sandbox(base_pck, project_dir, sandbox_output);
+            }else {
+                build_patch_pck_from_inputs(base_pck, project_dir, runtime_patch_output, dirty_paths);
+                compose_pck(base_pck, runtime_patch_output, sandbox_output);
+            }
             support_.copy_runtime_support_files(resolved_base.pack_path, sandbox_dir);
             std::cout << "Watch rebuild complete.\n";
         } catch(const std::exception& exception) {
