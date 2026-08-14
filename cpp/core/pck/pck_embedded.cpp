@@ -1,5 +1,6 @@
 #include "pck_embedded.h"
 #include "pck_format.h"
+#include "core/common/path_utils.h"
 #include<array>
 #include<cstring>
 #include<fstream>
@@ -244,7 +245,7 @@ namespace {
 }    
 
 bool EmbeddedPckHandler::is_probable_windows_executable(const std::filesystem::path& path) {
-    const auto extension = path.extension().string();
+    const auto extension = gddelta::common::path_to_utf8(path.extension());
     return extension == ".exe" || extension == ".dll";
 }
 
@@ -292,7 +293,8 @@ void EmbeddedPckHandler::embed_pck_into_executable(
         throw std::runtime_error("Failed to open source PCK for embedding: " + source_pck.string());
     }
 
-    const auto temp_output = output_executable.string() + ".tmp";
+    auto temp_output = output_executable;
+    temp_output += ".tmp";
     std::ofstream output(temp_output, std::ios::binary | std::ios::trunc);
     if(!output) {
         throw std::runtime_error("Failed to open output executable: " + output_executable.string());
@@ -379,10 +381,11 @@ void EmbeddedPckHandler::fixup_embedded_executable_headers(
         patch_scalar<std::uint64_t>(bytes, section_header_offset + 0x20, output_info->embedded_size);
     }
 
-    const auto temp_path = output_executable.string() + ".fixup.tmp";
+    auto temp_path = output_executable;
+    temp_path += ".fixup.tmp";
     std::ofstream output(temp_path, std::ios::binary | std::ios::trunc);
     if(!output) {
-        throw std::runtime_error("Failed to open temporary executable for header patching: " + temp_path);
+        throw std::runtime_error("Failed to open temporary executable for header patching: " + temp_path.string());
     }
     output.write(bytes.data(), static_cast<std::streamsize>(bytes.size()));
     if(!output) {

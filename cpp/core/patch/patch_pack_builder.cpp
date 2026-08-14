@@ -53,5 +53,7 @@ void PatchPackBuilder::build_patch_pack(
     writer.write_files(build_file_list(base_dir, modified_dir), output_pck, options);
 
     PatchManifestWriter manifest_writer;
-    manifest_writer.write(workspace_diff, base_dir, modified_dir, output_pck.string() + ".manifest.txt");
+    auto manifest_path = output_pck;
+    manifest_path += ".manifest.txt";
+    manifest_writer.write(workspace_diff, base_dir, modified_dir, manifest_path);
 }

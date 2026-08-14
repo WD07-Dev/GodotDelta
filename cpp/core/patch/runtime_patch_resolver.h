@@ -24,6 +24,7 @@ namespace gddelta::patch {
             [[nodiscard]] std::vector<std::string> collect_auto_input_paths(
                 const pck::PckReader& base_reader
             ) const;
+            [[nodiscard]] std::vector<std::string> collect_included_source_paths() const;
             [[nodiscard]] std::uint64_t calculate_watch_stamp() const;
             [[nodiscard]] static bool is_project_source_candidate(const std::filesystem::path& relative_path);
             [[nodiscard]] std::vector<std::string> collect_dirty_input_paths(const workspace::WorkspaceDiff& diff) const;
@@ -40,7 +41,6 @@ namespace gddelta::patch {
             [[nodiscard]] static std::string normalize_project_relative_path(const std::string& path);
             [[nodiscard]] std::optional<TimestampedPath> find_newest_project_source() const;
             [[nodiscard]] std::optional<TimestampedPath> find_newest_export_marker() const;
-            [[nodiscard]] std::vector<std::string> collect_included_source_paths() const;
             [[nodiscard]] static std::vector<IncludeRule> load_include_patterns(const std::filesystem::path& project_dir);
             [[nodiscard]] static bool matches_include_patterns(
                 const std::string& path,
@@ -58,6 +58,9 @@ namespace gddelta::patch {
                 const std::string& relative_path
             ) const;
             [[nodiscard]] std::vector<std::string> collect_import_outputs(
+                const std::string& relative_path
+            ) const;
+            [[nodiscard]] std::vector<std::string> collect_remap_outputs(
                 const std::string& relative_path
             ) const;
             [[nodiscard]] static bool is_text_reference_source(const std::filesystem::path& path);

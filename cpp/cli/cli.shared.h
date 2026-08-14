@@ -12,6 +12,11 @@
 #include<unordered_map>
 #include<vector>
 namespace cli_internal {
+    struct CompiledGDScriptOutputs {
+        std::unordered_map<std::string, std::filesystem::path> outputs;
+        std::vector<std::filesystem::path> failed_sources;
+    };
+
     struct BaseInputPaths {
         std::filesystem::path requested_path;
         std::filesystem::path pack_path;
@@ -50,22 +55,29 @@ namespace cli_internal {
         private:
             std::filesystem::path cli_path_;
             mutable bool gdre_ready_announced_ = false;
+            std::optional<std::string> base_encryption_key_;
 
         public:
             void set_cli_path(std::filesystem::path cli_path);
+            void set_base_encryption_key(std::optional<std::string> key);
             void launch_ui(const std::filesystem::path& cli_path) const;
             std::filesystem::path resolve_cli_directory(const std::filesystem::path& cli_path) const;
             std::filesystem::path resolve_tools_directory(const std::filesystem::path& cli_path) const;
+            std::filesystem::path resolve_cache_directory() const;
             void ensure_gdre_tools(const std::filesystem::path& cli_path) const;
             [[nodiscard]] std::filesystem::path resolve_gdre_tools_path() const;
             [[nodiscard]] std::string run_gdre_tools_command(const std::vector<std::string>& args) const;
             [[nodiscard]] std::string detect_base_engine_version(const std::filesystem::path& base_pck) const;
-            [[nodiscard]] std::unordered_map<std::string, std::filesystem::path> compile_gdscript_files(
+            [[nodiscard]] CompiledGDScriptOutputs compile_gdscript_files(
                 const std::filesystem::path& base_pck,
                 const std::vector<std::filesystem::path>& source_files,
                 const std::filesystem::path& output_dir
             ) const;
             [[nodiscard]] std::filesystem::path convert_project_config_to_binary(
+                const std::filesystem::path& source_file,
+                const std::filesystem::path& output_dir
+            ) const;
+            [[nodiscard]] std::filesystem::path convert_text_resource_to_binary(
                 const std::filesystem::path& source_file,
                 const std::filesystem::path& output_dir
             ) const;

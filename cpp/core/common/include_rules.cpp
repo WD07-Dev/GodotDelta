@@ -103,31 +103,36 @@ bool gddelta::common::matches_include_patterns(
 ) {
     if(patterns.empty()) return true;
 
-    auto matched_include = false;
+    auto matched_any = false;
+    auto include_path = false;
     for(const auto& pattern : patterns) {
         if(!std::regex_match(path, pattern.pattern)) continue;
+        matched_any = true;
         if(pattern.mode == IncludeRuleMode::Exclude) {
-            return false;
+            include_path = false;
+            continue;
         }
-        matched_include = true;
+        include_path = true;
     }
-    return matched_include;
+    return matched_any && include_path;
 }
 
 bool gddelta::common::matches_forced_include_patterns(
     const std::string& path,
     const std::vector<IncludeRule>& patterns
 ) {
+    auto matched_any = false;
+    auto forced_include = false;
     for(const auto& pattern : patterns) {
-        if(!std::regex_match(path, pattern.pattern)) {
+        if(!std::regex_match(path, pattern.pattern)) continue;
+        matched_any = true;
+        if(pattern.mode == IncludeRuleMode::Exclude) {
+            forced_include = false;
             continue;
         }
-        if(pattern.mode == IncludeRuleMode::Exclude) {
-            return false;
-        }
         if(pattern.mode == IncludeRuleMode::ForceInclude) {
-            return true;
+            forced_include = true;
         }
     }
-    return false;
+    return matched_any && forced_include;
 }

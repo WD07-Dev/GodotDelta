@@ -5,7 +5,7 @@ int main(int argc, char **argv) {
     try {
         return CliApplication().run(argc, argv);
     } catch (const std::exception& exception) {
-        std::cerr << exception.what() << "\n";
+        std::cerr << "FINAL ERROR: " << exception.what() << "\n";
         return 1;
     }
 }

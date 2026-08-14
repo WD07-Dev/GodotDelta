@@ -868,7 +868,8 @@ void GdmodPackage::write(
 ) const {
     auto package_files = std::vector<pck::PckWriteFile>{};
 
-    const auto temp_patch_path = std::filesystem::path(output_path.string() + ".plain.tmp.pck");
+    auto temp_patch_path = output_path;
+    temp_patch_path += ".plain.tmp.pck";
     pck::PckWriter patch_writer;
     patch_writer.write_files(files, temp_patch_path, options);
     const auto patch_bytes = read_file_bytes(temp_patch_path);

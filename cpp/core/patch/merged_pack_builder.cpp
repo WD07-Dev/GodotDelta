@@ -29,6 +29,8 @@ void MergedPackBuilder::build_merged_pack(
         file.source_pack_path = base_reader.path();
         file.source_offset = entry.offset;
         file.source_size = entry.size;
+        file.source_md5 = entry.md5;
+        file.source_flags = entry.flags & ~pck::kPackFileRemoval;
         merged_files.emplace(file.pack_path, std::move(file));
     }
 
@@ -43,6 +45,8 @@ void MergedPackBuilder::build_merged_pack(
         file.source_pack_path = patch_reader.path();
         file.source_offset = entry.offset;
         file.source_size = entry.size;
+        file.source_md5 = entry.md5;
+        file.source_flags = entry.flags & ~pck::kPackFileRemoval;
         merged_files[file.pack_path] = std::move(file);
     }
 
@@ -67,7 +71,8 @@ void MergedPackBuilder::build_merged_pack(
         return;
     }
 
-    const auto temp_output_pck = std::filesystem::path(output_pck.string() + ".pck.tmp");
+    auto temp_output_pck = output_pck;
+    temp_output_pck += ".pck.tmp";
     writer.write_files(files, temp_output_pck, effective_options);
     try {
         pck::EmbeddedPckHandler::embed_pck_into_executable(base_pck, temp_output_pck, output_pck);

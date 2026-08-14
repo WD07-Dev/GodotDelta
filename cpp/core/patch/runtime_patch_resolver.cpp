@@ -17,6 +17,34 @@ using namespace gddelta::patch;
 namespace {
     inline constexpr const char *kProjectIncludeFileName = ".gddeltainclude";
     inline constexpr const char *kDefaultIncludeFilePath = "build/default.gddeltainclude";
+
+    bool has_virtual_extension(std::string_view path, std::string_view extension) {
+        return path.size() >= extension.size()
+        && path.compare(path.size() - extension.size(), extension.size(), extension) == 0;
+    }
+
+    std::string replace_virtual_extension(std::string path, std::string_view extension) {
+        const auto slash_pos = path.find_last_of('/');
+        const auto dot_pos = path.find_last_of('.');
+        if(dot_pos == std::string::npos || (slash_pos != std::string::npos && dot_pos < slash_pos)) {
+            path += extension;
+            return path;
+        }
+
+        path.erase(dot_pos);
+        path += extension;
+        return path;
+    }
+
+    bool is_text_reference_source_virtual(std::string_view path) {
+        return has_virtual_extension(path, ".tscn")
+        || has_virtual_extension(path, ".tres")
+        || has_virtual_extension(path, ".gd")
+        || has_virtual_extension(path, ".gdshader")
+        || has_virtual_extension(path, ".json")
+        || has_virtual_extension(path, ".cfg")
+        || has_virtual_extension(path, ".txt");
+    }
 }
 
 RuntimePatchResolver::RuntimePatchResolver(std::filesystem::path project_dir):
@@ -35,13 +63,13 @@ bool RuntimePatchResolver::is_project_source_candidate(const std::filesystem::pa
         return false;
     }
     if(relative_path.parent_path().empty()) {
-        const auto filename = relative_path.filename().generic_string();
+        const auto filename = gddelta::common::path_to_utf8(relative_path.filename());
         if(!filename.empty() && filename.front() == '.') {
             return false;
         }
     }
 
-    const auto extension = relative_path.extension().generic_string();
+    const auto extension = gddelta::common::path_to_utf8(relative_path.extension());
     return extension != ".import" && extension != ".uid" && extension != ".tmp" && extension != ".remap" && extension != ".gdc";
 }
 
@@ -70,7 +98,7 @@ std::vector<gddelta::pck::PckWriteFile> RuntimePatchResolver::collect_patch_file
 
         pck::PckWriteFile file;
         file.pack_path = normalized;
-        file.source_path = project_dir_ / normalized;
+        file.source_path = project_dir_ / gddelta::common::path_from_utf8(normalized);
         file.removal = !std::filesystem::exists(file.source_path);
         files.push_back(std::move(file));
     };
@@ -90,7 +118,7 @@ std::vector<gddelta::pck::PckWriteFile> RuntimePatchResolver::collect_patch_file
     const auto add_optional_file = [&](const std::string& relative_path) {
         const auto normalized = normalize_project_relative_path(relative_path);
         if(normalized.empty()) return;
-        add_existing_file(normalized, project_dir_ / normalized);
+        add_existing_file(normalized, project_dir_ / gddelta::common::path_from_utf8(normalized));
     };
 
     for(const auto& input_path : input_paths) {
@@ -103,36 +131,45 @@ std::vector<gddelta::pck::PckWriteFile> RuntimePatchResolver::collect_patch_file
     while(!pending_inputs.empty()) {
         const auto normalized = pending_inputs.front();
         pending_inputs.pop();
-        add_file(normalized);
 
-        const auto full_path = project_dir_ / normalized;
-        const auto extension = full_path.extension().generic_string();
+        const auto full_path = project_dir_ / gddelta::common::path_from_utf8(normalized);
+        const auto extension = gddelta::common::path_to_utf8(full_path.extension());
+        const auto remap_outputs = collect_remap_outputs(normalized);
+        const auto export_it = export_map_.find(normalized);
+        const auto has_remap = std::filesystem::exists(
+            project_dir_ / gddelta::common::path_from_utf8(normalized + ".remap")
+        ) || !remap_outputs.empty()
+        || (export_it != export_map_.end() && has_virtual_extension(export_it->second, ".converted.res"));
+        if(!has_remap) add_file(normalized);
         if(extension == ".gd") {
-            auto gdc_path = std::filesystem::path(normalized);
-            gdc_path.replace_extension(".gdc");
-            const auto autoconverted_gdc = project_dir_ / ".autoconverted" / gdc_path;
+            const auto gdc_path = replace_virtual_extension(normalized, ".gdc");
+            const auto autoconverted_gdc = project_dir_ / ".autoconverted" / gddelta::common::path_from_utf8(gdc_path);
             if(std::filesystem::exists(autoconverted_gdc)) {
-                add_existing_file(gdc_path.generic_string(), autoconverted_gdc);
+                add_existing_file(gdc_path, autoconverted_gdc);
             }else {
-                add_optional_file(gdc_path.generic_string());
+                add_optional_file(gdc_path);
             }
         }
 
         add_optional_file(normalized + ".remap");
+        for(const auto& remap_output : remap_outputs) {
+            add_optional_file(remap_output);
+        }
         add_optional_file(normalized + ".uid");
         add_optional_file(normalized + ".import");
         for(const auto& import_output : collect_import_outputs(normalized)) {
             add_optional_file(import_output);
         }
 
-        const auto export_it = export_map_.find(normalized);
         if(export_it != export_map_.end()) {
             add_optional_file(export_it->second);
         }
 
-        for(const auto& reference : collect_text_resource_references(normalized)) {
-            if(seen_inputs.insert(reference).second) {
-                pending_inputs.push(reference);
+        if(!has_remap) {
+            for(const auto& reference : collect_text_resource_references(normalized)) {
+                if(seen_inputs.insert(reference).second) {
+                    pending_inputs.push(reference);
+                }
             }
         }
     }
@@ -207,21 +244,34 @@ std::string RuntimePatchResolver::normalize_project_relative_path(const std::str
 
 std::optional<RuntimePatchResolver::TimestampedPath> RuntimePatchResolver::find_newest_project_source() const {
     std::optional<TimestampedPath> newest;
-    for(auto it = std::filesystem::recursive_directory_iterator(project_dir_); it != std::filesystem::recursive_directory_iterator(); ++it) {
-        const auto relative_path = std::filesystem::relative(it->path(), project_dir_);
-        if(it->is_directory() && !is_project_source_candidate(relative_path)) {
+    std::error_code ec;
+    auto it = std::filesystem::recursive_directory_iterator(project_dir_, ec);
+    const auto end = std::filesystem::recursive_directory_iterator();
+    while(it != end) {
+        try {
+            if(ec) {
+                ec.clear();
+                it.increment(ec);
+                continue;
+            }
+
+            const auto relative_path = std::filesystem::relative(it->path(), project_dir_);
+            if(it->is_directory() && !is_project_source_candidate(relative_path)) {
+                it.disable_recursion_pending();
+                it.increment(ec);
+                continue;
+            }
+
+            if(it->is_regular_file() && is_project_source_candidate(relative_path)) {
+                const auto write_time = std::filesystem::last_write_time(it->path());
+                if(!newest || write_time > newest->time) {
+                    newest = TimestampedPath { it->path(), write_time };
+                }
+            }
+        } catch(const std::filesystem::filesystem_error&) {
             it.disable_recursion_pending();
-            continue;
         }
-
-        if(!it->is_regular_file() || !is_project_source_candidate(relative_path)) {
-            continue;
-        }
-
-        const auto write_time = std::filesystem::last_write_time(it->path());
-        if(!newest || write_time > newest->time) {
-            newest = TimestampedPath { it->path(), write_time };
-        }
+        it.increment(ec);
     }
     return newest;
 }
@@ -230,23 +280,34 @@ std::vector<std::string> RuntimePatchResolver::collect_included_source_paths() c
     const auto include_patterns = load_include_patterns(project_dir_);
     std::vector<std::string> source_paths;
 
-    for(auto it = std::filesystem::recursive_directory_iterator(project_dir_); it != std::filesystem::recursive_directory_iterator(); ++it) {
-        const auto relative_path = std::filesystem::relative(it->path(), project_dir_);
-        if(it->is_directory() && !is_project_source_candidate(relative_path)) {
+    std::error_code ec;
+    auto it = std::filesystem::recursive_directory_iterator(project_dir_, ec);
+    const auto end = std::filesystem::recursive_directory_iterator();
+    while(it != end) {
+        try {
+            if(ec) {
+                ec.clear();
+                it.increment(ec);
+                continue;
+            }
+
+            const auto relative_path = std::filesystem::relative(it->path(), project_dir_);
+            if(it->is_directory() && !is_project_source_candidate(relative_path)) {
+                it.disable_recursion_pending();
+                it.increment(ec);
+                continue;
+            }
+
+            if(it->is_regular_file() && is_project_source_candidate(relative_path)) {
+                const auto normalized_path = normalize_project_relative_path(gddelta::common::path_to_utf8(relative_path));
+                if(matches_include_patterns(normalized_path, include_patterns)) {
+                    source_paths.push_back(normalized_path);
+                }
+            }
+        } catch(const std::filesystem::filesystem_error&) {
             it.disable_recursion_pending();
-            continue;
         }
-
-        if(!it->is_regular_file() || !is_project_source_candidate(relative_path)) {
-            continue;
-        }
-
-        const auto normalized_path = normalize_project_relative_path(relative_path.generic_string());
-        if(!matches_include_patterns(normalized_path, include_patterns)) {
-            continue;
-        }
-
-        source_paths.push_back(normalized_path);
+        it.increment(ec);
     }
 
     std::sort(source_paths.begin(), source_paths.end());
@@ -258,15 +319,27 @@ std::optional<RuntimePatchResolver::TimestampedPath> RuntimePatchResolver::find_
     if(!std::filesystem::exists(exported_root)) return std::nullopt;
 
     std::optional<TimestampedPath> newest;
-    for(auto it = std::filesystem::recursive_directory_iterator(exported_root); it != std::filesystem::recursive_directory_iterator(); ++it) {
-        if(!it->is_regular_file() || it->path().filename() != "file_cache") {
-            continue;
-        }
+    std::error_code ec;
+    auto it = std::filesystem::recursive_directory_iterator(exported_root, ec);
+    const auto end = std::filesystem::recursive_directory_iterator();
+    while(it != end) {
+        try {
+            if(ec) {
+                ec.clear();
+                it.increment(ec);
+                continue;
+            }
 
-        const auto write_time = std::filesystem::last_write_time(it->path());
-        if(!newest || write_time > newest->time) {
-            newest = TimestampedPath { it->path(), write_time };
+            if(it->is_regular_file() && it->path().filename() == "file_cache") {
+                const auto write_time = std::filesystem::last_write_time(it->path());
+                if(!newest || write_time > newest->time) {
+                    newest = TimestampedPath { it->path(), write_time };
+                }
+            }
+        } catch(const std::filesystem::filesystem_error&) {
+            it.disable_recursion_pending();
         }
+        it.increment(ec);
     }
     return newest;
 }
@@ -276,19 +349,33 @@ std::unordered_map<std::string, std::string> RuntimePatchResolver::load_export_f
     const auto exported_root = project_dir / ".godot" / "exported";
     if(!std::filesystem::exists(exported_root)) return mappings;
 
-    for(const auto entry : std::filesystem::recursive_directory_iterator(exported_root)) {
-        if(!entry.is_regular_file() || entry.path().filename() != "file_cache") continue;
+    std::error_code ec;
+    auto it = std::filesystem::recursive_directory_iterator(exported_root, ec);
+    const auto end = std::filesystem::recursive_directory_iterator();
+    while(it != end) {
+        try {
+            if(ec) {
+                ec.clear();
+                it.increment(ec);
+                continue;
+            }
 
-        std::ifstream input(entry.path());
-        std::string line;
-        while (std::getline(input, line)) {
-            const auto first = line.find("::");
-            const auto second = first == std::string::npos ? std::string::npos : line.find("::", first + 2);
-            const auto third = second == std::string::npos ? std::string::npos : line.find("::", second + 2);
-            if(first == std::string::npos || second == std::string::npos || third == std::string::npos) continue;
-            
-            mappings[normalize_project_relative_path(line.substr(0, first))] = normalize_project_relative_path(line.substr(third + 2));
+            if(it->is_regular_file() && it->path().filename() == "file_cache") {
+                std::ifstream input(it->path());
+                std::string line;
+                while(std::getline(input, line)) {
+                    const auto first = line.find("::");
+                    const auto second = first == std::string::npos ? std::string::npos : line.find("::", first + 2);
+                    const auto third = second == std::string::npos ? std::string::npos : line.find("::", second + 2);
+                    if(first == std::string::npos || second == std::string::npos || third == std::string::npos) continue;
+
+                    mappings[normalize_project_relative_path(line.substr(0, first))] = normalize_project_relative_path(line.substr(third + 2));
+                }
+            }
+        } catch(const std::filesystem::filesystem_error&) {
+            it.disable_recursion_pending();
         }
+        it.increment(ec);
     }
     return mappings;
 }
@@ -301,24 +388,15 @@ std::vector<RuntimePatchResolver::IncludeRule> RuntimePatchResolver::load_includ
     );
 }
 
-bool RuntimePatchResolver::matches_include_patterns(
-    const std::string& path,
-    const std::vector<IncludeRule>& patterns
-) {
+bool RuntimePatchResolver::matches_include_patterns(const std::string& path, const std::vector<IncludeRule>& patterns) {
     return gddelta::common::matches_include_patterns(path, patterns);
 }
 
-bool RuntimePatchResolver::matches_forced_include_patterns(
-    const std::string& path,
-    const std::vector<IncludeRule>& patterns
-) {
+bool RuntimePatchResolver::matches_forced_include_patterns(const std::string& path, const std::vector<IncludeRule>& patterns) {
     return gddelta::common::matches_forced_include_patterns(path, patterns);
 }
 
-bool RuntimePatchResolver::patch_file_differs_from_base(
-    const pck::PckReader& base_reader,
-    const pck::PckWriteFile& file
-) {
+bool RuntimePatchResolver::patch_file_differs_from_base(const pck::PckReader& base_reader, const pck::PckWriteFile& file) {
     const auto base_entry = base_reader.find_entry("res://" + file.pack_path);
     if(file.removal) return base_entry.has_value();
     if(!base_entry.has_value()) return true;
@@ -326,16 +404,14 @@ bool RuntimePatchResolver::patch_file_differs_from_base(
 }
 
 std::vector<std::string> RuntimePatchResolver::collect_text_resource_references(const std::string& relative_path) const {
-    if(!is_text_reference_source(std::filesystem::path(relative_path))) return {};
+    if(!is_text_reference_source_virtual(relative_path)) return {};
 
-    const auto full_path = project_dir_ / relative_path;
-    if(!std::filesystem::exists(full_path)) {
-        return {};
-    }
+    const auto full_path = project_dir_ / gddelta::common::path_from_utf8(relative_path);
+    if(!std::filesystem::exists(full_path)) return {};
 
     std::ifstream input(full_path);
     if(!input) {
-        throw std::runtime_error("Failed to open text resource for dependency scan: " + full_path.string());
+        throw std::runtime_error("Failed to open text resource for dependency scan: " + gddelta::common::path_to_utf8(full_path));
     }
 
     const std::string content((std::istreambuf_iterator<char>(input)), std::istreambuf_iterator<char>());
@@ -350,12 +426,12 @@ std::vector<std::string> RuntimePatchResolver::collect_text_resource_references(
 }
 
 std::vector<std::string> RuntimePatchResolver::collect_import_outputs(const std::string& relative_path) const {
-    const auto import_path = project_dir_ / (relative_path + ".import");
+    const auto import_path = project_dir_ / gddelta::common::path_from_utf8(relative_path + ".import");
     if(!std::filesystem::exists(import_path)) return {};
 
     std::ifstream input(import_path);
     if(!input) {
-        throw std::runtime_error("Failed to open import file: " + import_path.string());
+        throw std::runtime_error("Failed to open import file: " + gddelta::common::path_to_utf8(import_path));
     }
 
     std::unordered_set<std::string> outputs;
@@ -381,8 +457,34 @@ std::vector<std::string> RuntimePatchResolver::collect_import_outputs(const std:
     return { outputs.begin(), outputs.end() };
 }
 
+std::vector<std::string> RuntimePatchResolver::collect_remap_outputs(const std::string& relative_path) const {
+    const auto remap_path = project_dir_ / gddelta::common::path_from_utf8(relative_path + ".remap");
+    if(!std::filesystem::exists(remap_path)) return {};
+
+    std::ifstream input(remap_path);
+    if(!input) {
+        throw std::runtime_error("Failed to open remap file: " + gddelta::common::path_to_utf8(remap_path));
+    }
+
+    std::unordered_set<std::string> outputs;
+    std::string line;
+    while(std::getline(input, line)) {
+        if(line.rfind("path=", 0) != 0) continue;
+
+        const auto first_quote = line.find('"');
+        const auto last_quote = line.rfind('"');
+        if(first_quote == std::string::npos || last_quote == std::string::npos || last_quote <= first_quote) {
+            continue;
+        }
+
+        outputs.insert(normalize_project_relative_path(line.substr(first_quote + 1, last_quote - first_quote - 1)));
+    }
+
+    return { outputs.begin(), outputs.end() };
+}
+
 bool RuntimePatchResolver::is_text_reference_source(const std::filesystem::path& path) {
-    const auto extension = path.extension().generic_string();
+    const auto extension = gddelta::common::path_to_utf8(path.extension());
     return extension == ".tscn" || extension == ".tres" 
     || extension == ".gd" || extension == ".gdshader" 
     || extension == ".json" || extension == ".cfg" 

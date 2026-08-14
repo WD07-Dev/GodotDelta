@@ -63,13 +63,29 @@ int CliApplication::run(int argc, char **argv) {
     }
 
     std::optional<std::filesystem::path> log_file_path;
-    if(argc >= 4 && std::string_view(argv[argc - 2]) == "--log-file") {
-        if(std::string_view(argv[argc - 1]).empty()) {
-            throw std::runtime_error("Invalid log file option. Expected --log-file <path>.");
+    std::optional<std::string> base_encryption_key;
+    bool parsed_option = true;
+    while(parsed_option && argc >= 4) {
+        parsed_option = false;
+        if(std::string_view(argv[argc - 2]) == "--log-file") {
+            if(std::string_view(argv[argc - 1]).empty()) {
+                throw std::runtime_error("Invalid log file option. Expected --log-file <path>.");
+            }
+            log_file_path = std::filesystem::path(argv[argc - 1]);
+            argc -= 2;
+            parsed_option = true;
+            continue;
         }
-        log_file_path = std::filesystem::path(argv[argc - 1]);
-        argc -= 2;
+        if(std::string_view(argv[argc - 2]) == "--base-key") {
+            if(std::string_view(argv[argc - 1]).empty()) {
+                throw std::runtime_error("Invalid base encryption key option. Expected --base-key <64-char-hex>.");
+            }
+            base_encryption_key = argv[argc - 1];
+            argc -= 2;
+            parsed_option = true;
+        }
     }
+    support_.set_base_encryption_key(base_encryption_key);
 
     ScopedLogRedirect log_redirect(log_file_path);
     return run_command(argv[1], argc, argv);
@@ -80,11 +96,13 @@ void CliApplication::print_usage() {
     << "Usage:\n"
     << "  Supported target runtime: Godot 3.x / 4.x\n"
     << "  gddelta ui\n"
+    << "  gddelta bootstrap [project_dir]\n"
     << "\n"
     << "  Distribution:\n"
     << "  gddelta make <base.pck|base.exe> <project_dir> <output.gdmod|output.pck>\n"
     << "  gddelta apply <base.pck|base.exe> <input.pck|input.gdmod> [sandbox_dir]\n"
     << "  gddelta extract <base.pck|base.exe> <input.gdmod> <output.pck>\n"
+    << "  Global option: [--base-key <64-char-hex>]\n"
     << "\n"
     << "  Development:\n"
     << "  gddelta watch-dev-build-patch <base.pck|base.exe> <project_dir> <patch.pck> <sandbox_dir> [interval_ms] [--log-file path]\n"

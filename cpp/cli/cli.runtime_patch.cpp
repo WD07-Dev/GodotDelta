@@ -1,5 +1,6 @@
 #include "cli.commands.h"
 #include "cli.shared.h"
+#include "core/common/path_utils.h"
 #include "core/patch/gdmod_package.h"
 #include "core/patch/patch_pack_builder.h"
 #include "core/patch/runtime_patch_resolver.h"
@@ -48,6 +49,20 @@ namespace {
             std::ios::fmtflags old_cout_flags_{};
             std::ios::fmtflags old_cerr_flags_{};
     };
+
+    bool has_encrypted_entries(const gddelta::pck::PckReader& reader) {
+        return std::any_of(reader.entries().begin(), reader.entries().end(), [](const gddelta::pck::PckEntry& entry) {
+            return (entry.flags & gddelta::pck::kPackFileEncrypted) != 0;
+        });
+    }
+
+    std::vector<std::string> collect_blind_override_inputs(const std::filesystem::path& project_dir) {
+        auto input_paths = gddelta::patch::RuntimePatchResolver(project_dir).collect_included_source_paths();
+        if(input_paths.empty()) {
+            throw std::runtime_error("No included project files were found for blind override patch generation.");
+        }
+        return input_paths;
+    }
 }
 
 void CliCommands::build_patch_pck_from_dirs(
@@ -109,11 +124,21 @@ void CliCommands::build_patch_pck_auto(
     std::cout << "[1/2] Scanning project for changed files\n";
     const auto temp_base = support_.create_temporary_base_copy(base_pck);
     std::vector<std::string> input_paths;
-    {
+    try {
         gddelta::pck::PckReader base_reader;
         base_reader.open(temp_base);
         const gddelta::patch::RuntimePatchResolver resolver(project_dir);
-        input_paths = resolver.collect_auto_input_paths(base_reader);
+        if(has_encrypted_entries(base_reader)) {
+            std::cout << "Base pack contains encrypted entries. Falling back to blind override scan.\n";
+            input_paths = collect_blind_override_inputs(project_dir);
+        } else {
+            input_paths = resolver.collect_auto_input_paths(base_reader);
+        }
+    } catch(const std::exception& exception) {
+        std::cout
+        << "Automatic base comparison is unavailable (" << exception.what() << "). "
+        << "Falling back to blind override scan.\n";
+        input_paths = collect_blind_override_inputs(project_dir);
     }
     std::error_code ec;
     std::filesystem::remove(temp_base, ec);
@@ -135,8 +160,21 @@ void CliCommands::build_gdmod(
     const auto resolved_base = support_.resolve_base_input(base_pck);
     const auto options = support_.build_pack_options_from_base(base_pck);
     const gddelta::patch::RuntimePatchResolver resolver(project_dir);
-    const auto base_reader = support_.open_supported_base_pack(base_pck);
-    auto input_paths = resolver.collect_auto_input_paths(base_reader);
+    std::vector<std::string> input_paths;
+    try {
+        const auto base_reader = support_.open_supported_base_pack(base_pck);
+        if(has_encrypted_entries(base_reader)) {
+            std::cout << "Base pack contains encrypted entries. Falling back to blind override scan.\n";
+            input_paths = collect_blind_override_inputs(project_dir);
+        } else {
+            input_paths = resolver.collect_auto_input_paths(base_reader);
+        }
+    } catch(const std::exception& exception) {
+        std::cout
+        << "Automatic base comparison is unavailable (" << exception.what() << "). "
+        << "Falling back to blind override scan.\n";
+        input_paths = collect_blind_override_inputs(project_dir);
+    }
     if(input_paths.empty()) {
         throw std::runtime_error("No changed files were found in the included project scope.");
     }
@@ -151,8 +189,8 @@ void CliCommands::build_gdmod(
     }
 
     gddelta::patch::GdmodManifest manifest;
-    manifest.base_file_name = resolved_base.pack_path.filename().string();
-    manifest.project_name = project_dir.filename().string();
+    manifest.base_file_name = gddelta::common::path_to_utf8(resolved_base.pack_path.filename());
+    manifest.project_name = gddelta::common::path_to_utf8(project_dir.filename());
     manifest.format_version = options.format_version;
     manifest.engine_major = options.engine_major;
     manifest.engine_minor = options.engine_minor;

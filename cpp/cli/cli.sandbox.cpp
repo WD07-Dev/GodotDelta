@@ -58,6 +58,11 @@ namespace {
         std::filesystem::remove(path, ec);
     }
 
+    void remove_all_if_exists(const std::filesystem::path& path) {
+        std::error_code ec;
+        std::filesystem::remove_all(path, ec);
+    }
+
     void ensure_directory(const std::filesystem::path& path, const char* error_prefix) {
         std::error_code ec;
         std::filesystem::create_directories(path, ec);
@@ -66,18 +71,31 @@ namespace {
         }
     }
 
+    std::filesystem::path resolve_dev_patch_output(
+        const std::filesystem::path& sandbox_dir,
+        const std::filesystem::path& pack_path
+    ) {
+        auto patch_name = pack_path.filename();
+        patch_name += ".devbuild.runtime_patch.tmp.pck";
+        return sandbox_dir / patch_name;
+    }
+
     cli_internal::PreparedRuntimePatchFiles collect_legacy_dev_sandbox_files(
         const cli_internal::CliSupport& support,
         const std::filesystem::path& base_pck,
         const std::filesystem::path& project_dir
     ) {
+        std::cout << "[legacy] Scanning project inputs\n";
         gddelta::patch::RuntimePatchResolver resolver(project_dir);
         resolver.warn_if_runtime_is_stale();
+        const auto input_paths = support.collect_project_source_inputs(project_dir);
+        support.print_rebuild_paths("Legacy runtime patch inputs", input_paths);
+        std::cout << "[legacy] Preparing runtime patch files from " << input_paths.size() << " input(s)\n";
 
         auto prepared = support.prepare_runtime_patch_files(
             base_pck,
             project_dir,
-            support.collect_project_source_inputs(project_dir),
+            input_paths,
             true
         );
         if(prepared.files.empty()) {
@@ -192,32 +210,27 @@ void CliCommands::build_dev_sandbox(
 ) {
     const auto resolved_base = support_.resolve_base_input(base_pck);
     ensure_directory(sandbox_dir, "Failed to create sandbox directory: ");
-
     const auto sandbox_output = sandbox_dir / resolved_base.pack_path.filename();
-    const auto runtime_patch_output = sandbox_dir / (sandbox_output.filename().string() + ".devbuild.runtime_patch.tmp.pck");
-
-    if(support_.is_legacy_v1_pack(base_pck)) {
-        const auto prepared = collect_legacy_dev_sandbox_files(support_, base_pck, project_dir);
-        support_.compose_pck_from_project_files(base_pck, prepared.files, sandbox_output);
-        support_.copy_runtime_support_files(resolved_base.pack_path, sandbox_dir);
-
-        std::cout
-        << "Prepared dev sandbox " << sandbox_dir
-        << " from base " << base_pck
-        << " and project " << project_dir << "\n";
-        return;
-    }
+    const auto runtime_patch_output = resolve_dev_patch_output(sandbox_dir, resolved_base.pack_path);
 
     try {
+        if(support_.is_legacy_v1_pack(base_pck)) {
+            std::cout << "[dev-build] Building legacy runtime patch PCK\n";
+        } else {
+            std::cout << "[dev-build] Building runtime patch PCK\n";
+        }
         build_patch_pck_auto(base_pck, project_dir, runtime_patch_output);
+        if(support_.is_legacy_v1_pack(base_pck)) {
+            std::cout << "[dev-build] Composing legacy sandbox output\n";
+        } else {
+            std::cout << "[dev-build] Composing sandbox output\n";
+        }
         compose_pck(base_pck, runtime_patch_output, sandbox_output);
-    } catch (...) {
+    } catch(...) {
         remove_if_exists(runtime_patch_output);
         throw;
     }
-
     remove_if_exists(runtime_patch_output);
-    support_.copy_runtime_support_files(resolved_base.pack_path, sandbox_dir);
 
     std::cout
     << "Prepared dev sandbox " << sandbox_dir
@@ -249,7 +262,9 @@ void CliCommands::apply_pck_in_place(
 ) {
     std::cout << "[1/3] Building merged output from base and patch\n";
     const auto resolved_base = support_.resolve_base_input(base_pck);
-    const auto temp_output = resolved_base.pack_path.parent_path() / (resolved_base.pack_path.stem().string() + ".apply.tmp" + resolved_base.pack_path.extension().string());
+    auto temp_output = resolved_base.pack_path.parent_path() / resolved_base.pack_path.stem();
+    temp_output += ".apply.tmp";
+    temp_output += resolved_base.pack_path.extension();
     compose_pck(base_pck, patch_pck, temp_output);
 
     std::cout << "[2/3] Replacing base file with merged output\n";
@@ -276,7 +291,8 @@ void CliCommands::apply_gdmod(
     std::cout << "[1/4] Reading gdmod manifest\n";
     const auto manifest = package.read_manifest(gdmod_path);
     const auto resolved_base = support_.resolve_base_input(base_pck);
-    const auto temp_patch_path = resolved_base.pack_path.parent_path() / (gdmod_path.stem().string() + ".apply.tmp.pck");
+    auto temp_patch_path = resolved_base.pack_path.parent_path() / gdmod_path.stem();
+    temp_patch_path += ".apply.tmp.pck";
 
     std::cout
     << "Applying gdmod " << gdmod_path
@@ -354,20 +370,16 @@ void CliCommands::watch_dev_sandbox_from_patch_pck(
 ) {
     const ScopedLogRedirect log_redirect(log_file_path);
     const gddelta::patch::RuntimePatchResolver resolver(project_dir);
-    const auto legacy_v1 = support_.is_legacy_v1_pack(base_pck);
+    const auto resolved_base = support_.resolve_base_input(base_pck);
+    const auto sandbox_output = sandbox_dir / resolved_base.pack_path.filename();
 
     try {
+        std::cout << "[watch] Preparing sandbox\n";
         build_patch_pck_auto(base_pck, project_dir, patch_pck);
-        if(legacy_v1) {
-            build_dev_sandbox(base_pck, project_dir, sandbox_dir);
-        }else {
-            build_dev_sandbox_from_pck(base_pck, patch_pck, sandbox_dir);
-        }
+        compose_pck(base_pck, patch_pck, sandbox_output);
     } catch(const std::exception& exception) {
-        std::cout
-        << "Initial runtime patch build failed, falling back to base sandbox: "
-        << exception.what() << "\n";
-        support_.copy_base_into_sandbox(base_pck, sandbox_dir);
+        std::cerr << "Initial dev sandbox build failed: " << exception.what() << "\n";
+        throw;
     }
 
     std::cout
@@ -382,16 +394,12 @@ void CliCommands::watch_dev_sandbox_from_patch_pck(
 
         try {
             std::cout
-            << "Change detected, rebuilding runtime patch and sandbox:\n"
+            << "Change detected, rebuilding development patch state:\n"
             << "  patch: " << patch_pck << "\n"
             << "  sandbox: " << sandbox_dir << "\n";
             support_.print_rebuild_paths("Runtime patch inputs", dirty_paths);
             build_patch_pck_from_inputs(base_pck, project_dir, patch_pck, dirty_paths);
-            if(legacy_v1) {
-                build_dev_sandbox(base_pck, project_dir, sandbox_dir);
-            }else {
-                build_dev_sandbox_from_pck(base_pck, patch_pck, sandbox_dir);
-            }
+            compose_pck(base_pck, patch_pck, sandbox_output);
             std::cout << "Watch rebuild complete.\n";
         } catch(const std::exception& exception) {
             std::cerr << "Watch rebuild failed: " << exception.what() << "\n";
@@ -408,20 +416,25 @@ void CliCommands::watch_dev_sandbox(
 ) {
     const ScopedLogRedirect log_redirect(log_file_path);
     build_dev_sandbox(base_pck, project_dir, sandbox_dir);
-    gddelta::patch::RuntimePatchResolver resolver(project_dir);
-    const auto initial_stamp = resolver.calculate_watch_stamp();
+    const auto resolved_base = support_.resolve_base_input(base_pck);
+    const auto runtime_patch_output = resolve_dev_patch_output(sandbox_dir, resolved_base.pack_path);
+    const auto sandbox_output = sandbox_dir / resolved_base.pack_path.filename();
 
     std::cout
     << "Watching " << project_dir
     << " -> " << sandbox_dir
     << " (" << interval_ms << " ms)\n";
-    
-    support_.watch_stamp(initial_stamp, interval_ms, [&resolver]() {
-        return resolver.calculate_watch_stamp();
-    }, [&]() {
+
+    const gddelta::patch::RuntimePatchResolver resolver(project_dir);
+    support_.watch_workspace_diff(project_dir, interval_ms, [&](const gddelta::workspace::WorkspaceDiff& diff) {
+        const auto dirty_paths = resolver.collect_dirty_input_paths(diff);
+        if(dirty_paths.empty()) return;
+
         try {
-            std::cout << "Workspace/runtime stamp changed, rebuilding sandbox: " << sandbox_dir << "\n";
-            build_dev_sandbox(base_pck, project_dir, sandbox_dir);
+            std::cout << "Workspace/runtime diff changed, rebuilding development patch state: " << sandbox_dir << "\n";
+            support_.print_rebuild_paths("Runtime patch inputs", dirty_paths);
+            build_patch_pck_from_inputs(base_pck, project_dir, runtime_patch_output, dirty_paths);
+            compose_pck(base_pck, runtime_patch_output, sandbox_output);
             std::cout << "Watch rebuild complete.\n";
         } catch(const std::exception& exception) {
             std::cerr << "Watch rebuild failed: " << exception.what() << "\n";

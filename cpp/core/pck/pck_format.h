@@ -54,6 +54,8 @@ namespace gddelta::pck {
         std::filesystem::path source_pack_path;
         std::uint64_t source_offset = 0;
         std::uint64_t source_size = 0;
+        std::array<std::uint8_t, 16> source_md5 {};
+        std::uint32_t source_flags = 0;
         std::string pack_path;
         std::vector<std::uint8_t> inline_data;
         bool removal = false;

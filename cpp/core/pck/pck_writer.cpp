@@ -90,10 +90,7 @@ namespace {
         if(normalized.ends_with(".tmp") || normalized.find(".tmp") != std::string::npos) {
             return true;
         }
-
-        if(normalized.ends_with(".uid")) {
-            return true;
-        }
+        if(normalized.ends_with(".uid")) return true;
 
         for(const auto &part : relative_path) {
             if(part == "editor" || part == "shader_cache") {
@@ -145,8 +142,8 @@ namespace {
             entry.source_offset = file.source_offset;
             entry.inline_data = file.inline_data;
             entry.pack_path = normalize_pack_path(file.pack_path);
-            entry.md5 = {};
-            entry.flags = file.removal ? kPackFileRemoval : 0;
+            entry.md5 = file.source_md5;
+            entry.flags = file.source_flags | (file.removal ? kPackFileRemoval : 0);
             if(file.removal) {
                 entry.size = 0;
             }else if(!entry.inline_data.empty()) {
@@ -248,7 +245,7 @@ void PckWriter::write_from_directory(
     std::vector<PckWriteFile> files;
     files.reserve(entries.size());
     for(const auto& entry : entries) {
-        files.push_back({ entry.source_path, {}, 0, 0, entry.pack_path, {}, false });
+        files.push_back({ entry.source_path, {}, 0, 0, {}, 0, entry.pack_path, {}, false });
     }
     write_files(files, output_pck, options);
 }
@@ -273,7 +270,8 @@ void PckWriter::write_files(
         throw std::runtime_error("Refusing to write an empty PCK.");
     }
 
-    const auto temp_path = output_pck.string() + ".tmp";
+    auto temp_path = output_pck;
+    temp_path += ".tmp";
     std::ofstream output(temp_path, std::ios::binary | std::ios::trunc);
     if(!output) {
         throw std::runtime_error("Failed to open output PCK: " + output_pck.string());
