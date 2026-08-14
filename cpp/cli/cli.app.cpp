@@ -219,7 +219,7 @@ int CliApplication::run_command(std::string_view command, int argc, char **argv)
         const auto output_path = std::filesystem::path(argv[4]);
         if(output_path.extension() == ".pck") {
             commands_.build_patch_pck_auto(argv[2], argv[3], output_path);
-        } else {
+        }else {
             commands_.build_gdmod(argv[2], argv[3], output_path);
         }
         return 0;
@@ -244,7 +244,7 @@ int CliApplication::run_command(std::string_view command, int argc, char **argv)
         if(!require_arg_count(argc, 4)) return 1;
         if(argc >= 5) {
             commands_.build_dev_sandbox_from_pck(argv[2], argv[3], argv[4]);
-        } else {
+        }else {
             commands_.apply_pck_in_place(argv[2], argv[3]);
         }
         return 0;
@@ -259,13 +259,13 @@ int CliApplication::run_command(std::string_view command, int argc, char **argv)
                 const auto output_path = std::filesystem::path(argv[4]);
                 if(output_path.extension() == ".pck") {
                     commands_.extract_gdmod_to_pck(argv[2], argv[3], output_path);
-                } else {
+                }else {
                     commands_.apply_gdmod(argv[2], argv[3], output_path);
                 }
             }else {
                 commands_.apply_gdmod(argv[2], argv[3], std::nullopt);
             }
-        } else {
+        }else {
             if(argc >= 5) {
                 commands_.build_dev_sandbox_from_pck(argv[2], argv[3], argv[4]);
             }else {

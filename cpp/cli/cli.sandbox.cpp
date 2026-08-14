@@ -80,6 +80,13 @@ namespace {
         return sandbox_dir / patch_name;
     }
 
+    std::filesystem::path resolve_apply_backup_output(const std::filesystem::path& pack_path) {
+        auto backup_output = pack_path.parent_path() / pack_path.stem();
+        backup_output += ".apply.backup";
+        backup_output += pack_path.extension();
+        return backup_output;
+    }
+
     cli_internal::PreparedRuntimePatchFiles collect_legacy_dev_sandbox_files(
         const cli_internal::CliSupport& support,
         const std::filesystem::path& base_pck,
@@ -216,16 +223,17 @@ void CliCommands::build_dev_sandbox(
     try {
         if(support_.is_legacy_v1_pack(base_pck)) {
             std::cout << "[dev-build] Building legacy runtime patch PCK\n";
-        } else {
+        }else {
             std::cout << "[dev-build] Building runtime patch PCK\n";
         }
         build_patch_pck_auto(base_pck, project_dir, runtime_patch_output);
         if(support_.is_legacy_v1_pack(base_pck)) {
             std::cout << "[dev-build] Composing legacy sandbox output\n";
-        } else {
+        }else {
             std::cout << "[dev-build] Composing sandbox output\n";
         }
         compose_pck(base_pck, runtime_patch_output, sandbox_output);
+        support_.copy_runtime_support_files(resolved_base.pack_path, sandbox_dir);
     } catch(...) {
         remove_if_exists(runtime_patch_output);
         throw;
@@ -268,14 +276,33 @@ void CliCommands::apply_pck_in_place(
     compose_pck(base_pck, patch_pck, temp_output);
 
     std::cout << "[2/3] Replacing base file with merged output\n";
+    const auto backup_output = resolve_apply_backup_output(resolved_base.pack_path);
     std::error_code ec;
-    std::filesystem::remove(resolved_base.pack_path, ec);
+    std::filesystem::remove(backup_output, ec);
+    ec.clear();
+
+    std::filesystem::rename(resolved_base.pack_path, backup_output, ec);
+    if(ec) {
+        std::filesystem::remove(temp_output, ec);
+        throw std::runtime_error("Failed to move base file into backup location: " + resolved_base.pack_path.string());
+    }
+
     ec.clear();
     std::filesystem::rename(temp_output, resolved_base.pack_path, ec);
     if(ec) {
+        std::error_code restore_ec;
+        std::filesystem::rename(backup_output, resolved_base.pack_path, restore_ec);
         std::filesystem::remove(temp_output, ec);
+        if(restore_ec) {
+            throw std::runtime_error(
+                "Failed to replace base file with applied patch and failed to restore backup: "
+                + resolved_base.pack_path.string()
+            );
+        }
         throw std::runtime_error("Failed to replace base file with applied patch: " + resolved_base.pack_path.string());
     }
+
+    std::filesystem::remove(backup_output, ec);
 
     std::cout
     << "[3/3] Applied patch " << patch_pck
@@ -308,7 +335,7 @@ void CliCommands::apply_gdmod(
     std::cout << "[2/4] Recovering patch payload from gdmod\n";
     if(manifest.legacy_plain_payload) {
         package.extract_patch_pck(gdmod_path, temp_patch_path);
-    } else {
+    }else {
         package.extract_protected_patch_pck(resolved_base.pack_path, gdmod_path, temp_patch_path);
     }
     try {
@@ -352,7 +379,7 @@ void CliCommands::extract_gdmod_to_pck(
     std::cout << "[2/3] Recovering patch payload from gdmod\n";
     if(manifest.legacy_plain_payload) {
         package.extract_patch_pck(gdmod_path, output_pck);
-    } else {
+    }else {
         package.extract_protected_patch_pck(resolved_base.pack_path, gdmod_path, output_pck);
     }
 
@@ -377,6 +404,7 @@ void CliCommands::watch_dev_sandbox_from_patch_pck(
         std::cout << "[watch] Preparing sandbox\n";
         build_patch_pck_auto(base_pck, project_dir, patch_pck);
         compose_pck(base_pck, patch_pck, sandbox_output);
+        support_.copy_runtime_support_files(resolved_base.pack_path, sandbox_dir);
     } catch(const std::exception& exception) {
         std::cerr << "Initial dev sandbox build failed: " << exception.what() << "\n";
         throw;
@@ -400,6 +428,7 @@ void CliCommands::watch_dev_sandbox_from_patch_pck(
             support_.print_rebuild_paths("Runtime patch inputs", dirty_paths);
             build_patch_pck_from_inputs(base_pck, project_dir, patch_pck, dirty_paths);
             compose_pck(base_pck, patch_pck, sandbox_output);
+            support_.copy_runtime_support_files(resolved_base.pack_path, sandbox_dir);
             std::cout << "Watch rebuild complete.\n";
         } catch(const std::exception& exception) {
             std::cerr << "Watch rebuild failed: " << exception.what() << "\n";
@@ -435,6 +464,7 @@ void CliCommands::watch_dev_sandbox(
             support_.print_rebuild_paths("Runtime patch inputs", dirty_paths);
             build_patch_pck_from_inputs(base_pck, project_dir, runtime_patch_output, dirty_paths);
             compose_pck(base_pck, runtime_patch_output, sandbox_output);
+            support_.copy_runtime_support_files(resolved_base.pack_path, sandbox_dir);
             std::cout << "Watch rebuild complete.\n";
         } catch(const std::exception& exception) {
             std::cerr << "Watch rebuild failed: " << exception.what() << "\n";

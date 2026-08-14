@@ -131,7 +131,7 @@ void CliCommands::build_patch_pck_auto(
         if(has_encrypted_entries(base_reader)) {
             std::cout << "Base pack contains encrypted entries. Falling back to blind override scan.\n";
             input_paths = collect_blind_override_inputs(project_dir);
-        } else {
+        }else {
             input_paths = resolver.collect_auto_input_paths(base_reader);
         }
     } catch(const std::exception& exception) {
@@ -166,7 +166,7 @@ void CliCommands::build_gdmod(
         if(has_encrypted_entries(base_reader)) {
             std::cout << "Base pack contains encrypted entries. Falling back to blind override scan.\n";
             input_paths = collect_blind_override_inputs(project_dir);
-        } else {
+        }else {
             input_paths = resolver.collect_auto_input_paths(base_reader);
         }
     } catch(const std::exception& exception) {

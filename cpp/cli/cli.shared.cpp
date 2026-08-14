@@ -546,7 +546,7 @@ void ensure_text_line_in_section(
         lines.emplace_back(section_header);
         lines.emplace_back();
         lines.emplace_back(requested_line);
-    } else {
+    }else {
         lines.insert(lines.begin() + static_cast<std::ptrdiff_t>(insert_index), requested_line);
     }
 
@@ -1097,7 +1097,7 @@ CompiledGDScriptOutputs CliSupport::compile_gdscript_files(
                 if(std::filesystem::exists(cached_output_path)) {
                     compiled_outputs.outputs[path_to_utf8(source_file)] = cached_output_path;
                     ++reused_count;
-                } else {
+                }else {
                     compile_batches.push_back({source_file});
                 }
             }
@@ -1179,7 +1179,7 @@ CompiledGDScriptOutputs CliSupport::compile_gdscript_files(
             std::filesystem::copy_file(compiled_output_path, cached_output_path, std::filesystem::copy_options::overwrite_existing, ec);
             if(ec) {
                 compiled_outputs.outputs[path_to_utf8(source_file)] = compiled_output_path;
-            } else {
+            }else {
                 compiled_outputs.outputs[path_to_utf8(source_file)] = cached_output_path;
             }
         }

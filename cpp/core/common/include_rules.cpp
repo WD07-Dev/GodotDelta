@@ -20,7 +20,7 @@ std::regex gddelta::common::compile_include_pattern(const std::string& pattern) 
             if(is_double_star) {
                 regex_pattern += ".*";
                 ++i;
-            } else {
+            }else {
                 regex_pattern += "[^/]*";
             }
             continue;
@@ -70,7 +70,7 @@ std::vector<IncludeRule> gddelta::common::load_include_patterns_from_file(const 
             mode = IncludeRuleMode::ForceInclude;
             trimmed.erase(trimmed.begin());
             trimmed = trim_copy(trimmed);
-        } else if(trimmed.front() == '!') {
+        }else if(trimmed.front() == '!') {
             mode = IncludeRuleMode::Exclude;
             trimmed.erase(trimmed.begin());
             trimmed = trim_copy(trimmed);

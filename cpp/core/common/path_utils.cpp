@@ -5,8 +5,7 @@ using namespace gddelta::common;
 namespace {
     bool has_windows_drive_prefix(const std::string& path) {
         return path.size() >= 2
-            && ((path[0] >= 'A' && path[0] <= 'Z') || (path[0] >= 'a' && path[0] <= 'z'))
-            && path[1] == ':';
+        && ((path[0] >= 'A' && path[0] <= 'Z') || (path[0] >= 'a' && path[0] <= 'z')) && path[1] == ':';
     }
 
     bool has_traversal_segment(std::string_view path) {
@@ -67,9 +66,7 @@ std::string gddelta::common::normalize_pack_relative_path(std::string_view path)
 
 bool gddelta::common::is_safe_pack_relative_path(const std::filesystem::path& path) {
     for(const auto& part : path) {
-        if(part == "." || part == "..") {
-            return false;
-        }
+        if(part == "." || part == "..") return false;
     }
     return true;
 }

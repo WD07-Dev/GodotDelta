@@ -431,7 +431,7 @@ void PckWriter::write_files(
             output.seekp(offset_positions[index]);
             write_scalar<std::uint64_t>(output, entries[index].offset);
         }
-    } else {
+    }else {
         throw std::runtime_error("Only PCK format v1/v2/v3/v4 writing is implemented right now.");
     }
 

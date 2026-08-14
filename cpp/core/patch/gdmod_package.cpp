@@ -568,7 +568,7 @@ bool is_low_entropy_chunk(std::span<const std::uint8_t> bytes) {
         if(bytes[index] == bytes[index - 1]) {
             ++current_run;
             longest_run = std::max(longest_run, current_run);
-        } else {
+        }else {
             current_run = 1;
         }
     }
