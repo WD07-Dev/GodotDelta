@@ -50,6 +50,16 @@ namespace {
         const auto normalized = gddelta::common::normalize_pack_relative_path(path);
         return ProjectInputPath { normalized, normalized };
     }
+
+    void add_compiled_script_candidate(
+        std::string_view pack_path,
+        std::string_view source_path,
+        const auto& add_optional_file
+    ) {
+        const auto gdc_pack_path = replace_virtual_extension(std::string(pack_path), ".gdc");
+        const auto gdc_source_path = replace_virtual_extension(std::string(source_path), ".gdc");
+        add_optional_file(gdc_pack_path, gdc_source_path);
+    }
 }
 
 RuntimePatchResolver::RuntimePatchResolver(std::filesystem::path project_dir):
@@ -149,14 +159,7 @@ std::vector<gddelta::pck::PckWriteFile> RuntimePatchResolver::collect_patch_file
             const auto full_path = project_dir_ / gddelta::common::path_from_utf8(input.source_path);
             const auto extension = gddelta::common::path_to_utf8(full_path.extension());
             if(extension == ".gd") {
-                const auto gdc_pack_path = replace_virtual_extension(input.pack_path, ".gdc");
-                const auto gdc_source_path = replace_virtual_extension(input.source_path, ".gdc");
-                const auto autoconverted_gdc = project_dir_ / ".autoconverted" / gddelta::common::path_from_utf8(gdc_source_path);
-                if(std::filesystem::exists(autoconverted_gdc)) {
-                    add_existing_file(gdc_pack_path, autoconverted_gdc);
-                }else {
-                    add_optional_file(gdc_pack_path, gdc_source_path);
-                }
+                add_compiled_script_candidate(input.pack_path, input.source_path, add_optional_file);
             }
 
             add_optional_file(input.pack_path + ".remap", input.source_path + ".remap");
@@ -189,14 +192,7 @@ std::vector<gddelta::pck::PckWriteFile> RuntimePatchResolver::collect_patch_file
         || (export_it != export_map_.end() && has_virtual_extension(export_it->second, ".converted.res"));
         if(!has_remap) add_file(input.pack_path, input.source_path);
         if(extension == ".gd") {
-            const auto gdc_pack_path = replace_virtual_extension(input.pack_path, ".gdc");
-            const auto gdc_source_path = replace_virtual_extension(input.source_path, ".gdc");
-            const auto autoconverted_gdc = project_dir_ / ".autoconverted" / gddelta::common::path_from_utf8(gdc_source_path);
-            if(std::filesystem::exists(autoconverted_gdc)) {
-                add_existing_file(gdc_pack_path, autoconverted_gdc);
-            }else {
-                add_optional_file(gdc_pack_path, gdc_source_path);
-            }
+            add_compiled_script_candidate(input.pack_path, input.source_path, add_optional_file);
         }
 
         add_optional_file(input.pack_path + ".remap", input.source_path + ".remap");

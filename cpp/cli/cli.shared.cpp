@@ -317,6 +317,25 @@ bool is_binary_text_resource_pack_path(std::string_view path) {
     || has_virtual_extension(path, ".gdc");
 }
 
+std::string resolve_legacy_script_patch_pack_path(
+    const gddelta::pck::PckReader& base_reader,
+    std::string_view pack_path
+) {
+    const auto normalized_path = std::string(pack_path);
+    if(base_reader.find_entry("res://" + normalized_path).has_value()) {
+        return normalized_path;
+    }
+
+    if(has_virtual_extension(normalized_path, ".gdc")) {
+        const auto gde_pack_path = replace_virtual_extension(normalized_path, ".gde");
+        if(base_reader.find_entry("res://" + gde_pack_path).has_value()) {
+            return gde_pack_path;
+        }
+    }
+
+    return normalized_path;
+}
+
 std::filesystem::path select_best_text_resource_binary_output(
     const std::filesystem::path& source_file,
     const std::vector<std::filesystem::path>& outputs
@@ -363,6 +382,66 @@ bool is_binary_remap_target(const std::optional<std::string>& remap_target) {
     return is_binary_text_resource_pack_path(*remap_target);
 }
 
+std::optional<std::string> normalize_script_remap_target(const std::optional<std::string>& remap_target) {
+    if(!remap_target.has_value()) {
+        return std::nullopt;
+    }
+    if(has_virtual_extension(*remap_target, ".gde")) {
+        return replace_virtual_extension(*remap_target, ".gdc");
+    }
+    if(has_virtual_extension(*remap_target, ".gdc")) {
+        return remap_target;
+    }
+    return std::nullopt;
+}
+
+std::filesystem::path write_remap_file(
+    const std::filesystem::path& output_path,
+    std::string_view target_pack_path
+) {
+    std::filesystem::create_directories(output_path.parent_path());
+    std::ofstream output(output_path, std::ios::binary);
+    if(!output) {
+        throw std::runtime_error("Failed to write remap file: " + path_to_utf8(output_path));
+    }
+    output << "[remap]\n";
+    output << "path=\"res://" << target_pack_path << "\"\n";
+    return output_path;
+}
+
+void add_existing_remap_file(
+    std::vector<gddelta::pck::PckWriteFile>& files,
+    std::unordered_set<std::string>& seen_pack_paths,
+    std::string_view remap_pack_path,
+    const std::filesystem::path& remap_source_path
+) {
+    if(!std::filesystem::exists(remap_source_path)) return;
+    if(remap_pack_path.empty() || seen_pack_paths.contains(std::string(remap_pack_path))) {
+        return;
+    }
+
+    seen_pack_paths.insert(std::string(remap_pack_path));
+    gddelta::pck::PckWriteFile remap_file;
+    remap_file.pack_path = std::string(remap_pack_path);
+    remap_file.source_path = remap_source_path;
+    files.push_back(std::move(remap_file));
+}
+
+void add_resolved_patch_files(
+    std::vector<gddelta::pck::PckWriteFile>& destination_files,
+    std::unordered_set<std::string>& seen_pack_paths,
+    const gddelta::patch::RuntimePatchResolver& resolver,
+    std::string_view input_path
+) {
+    for(auto& file : resolver.collect_patch_files({std::string(input_path)})) {
+        if(file.pack_path.empty() || seen_pack_paths.contains(file.pack_path)) {
+            continue;
+        }
+        seen_pack_paths.insert(file.pack_path);
+        destination_files.push_back(std::move(file));
+    }
+}
+
 void upsert_pack_file_source(
     std::vector<gddelta::pck::PckWriteFile>& files,
     std::string_view pack_path,
@@ -371,6 +450,7 @@ void upsert_pack_file_source(
     for(auto& file : files) {
         if(file.removal || file.pack_path != pack_path) continue;
         file.source_path = source_path;
+        file.removal = false;
         return;
     }
 
@@ -1542,8 +1622,7 @@ void CliSupport::compose_pck_from_project_files(
 
             const auto gdc_pack_path_string = replace_virtual_extension(file.pack_path, ".gdc");
             const auto gdc_entry = base_reader.find_entry("res://" + gdc_pack_path_string);
-            const auto autoconverted_gdc_entry = base_reader.find_entry("res://.autoconverted/" + gdc_pack_path_string);
-            if(is_godot3 || gdc_entry.has_value() || autoconverted_gdc_entry.has_value()) {
+            if(is_godot3 || gdc_entry.has_value()) {
                 std::filesystem::path compiled_output_path;
                 const auto compiled_it = compiled_gd_outputs.find(path_to_utf8(file.source_path));
                 if(compiled_it != compiled_gd_outputs.end()) compiled_output_path = compiled_it->second;
@@ -1553,18 +1632,21 @@ void CliSupport::compose_pck_from_project_files(
                     << path_to_utf8(file.source_path) << "\n";
                     continue;
                 }
-                if(gdc_entry.has_value()) {
-                    patch_args.push_back("--patch-file=" + path_to_utf8(compiled_output_path) + "=res://" + gdc_pack_path_string);
-                }else if(autoconverted_gdc_entry.has_value()) {
-                    patch_args.push_back("--patch-file=" + path_to_utf8(compiled_output_path) + "=res://.autoconverted/" + gdc_pack_path_string);
-                }else if(is_godot3) {
-                    patch_args.push_back("--patch-file=" + path_to_utf8(compiled_output_path) + "=res://" + gdc_pack_path_string);
+                auto target_pack_path = gdc_pack_path_string;
+                if(is_godot3) {
+                    target_pack_path = resolve_legacy_script_patch_pack_path(base_reader, gdc_pack_path_string);
                 }
+                patch_args.push_back("--patch-file=" + path_to_utf8(compiled_output_path) + "=res://" + target_pack_path);
             }
             continue;
         }
 
-        patch_args.push_back("--patch-file=" + path_to_utf8(file.source_path) + "=res://" + file.pack_path);
+        auto target_pack_path = file.pack_path;
+        if(is_godot3 && !has_virtual_extension(target_pack_path, ".gdc")) {
+            target_pack_path = resolve_legacy_script_patch_pack_path(base_reader, target_pack_path);
+        }
+
+        patch_args.push_back("--patch-file=" + path_to_utf8(file.source_path) + "=res://" + target_pack_path);
     }
 
     try {
@@ -1683,26 +1765,34 @@ PreparedRuntimePatchFiles CliSupport::prepare_runtime_patch_files(
     for(const auto& input_path : input_paths) {
         const auto remap_pack_path = input_path.pack_path + ".remap";
         const auto remap_target = resolve_remap_target_pack_path(base_reader, project_dir, input_path.source_path);
+        const auto script_remap_target = normalize_script_remap_target(remap_target);
+        if(script_remap_target.has_value()) {
+            add_resolved_patch_files(prepared.files, seen_pack_paths, resolver, input_path.source_path);
+            add_existing_remap_file(
+                prepared.files,
+                seen_pack_paths,
+                remap_pack_path,
+                project_dir / gddelta::common::path_from_utf8(input_path.source_path + ".remap")
+            );
+            continue;
+        }
+
         if(remap_target.has_value() && is_binary_text_resource_pack_path(*remap_target)) {
             gddelta::pck::PckWriteFile converted_file;
             converted_file.pack_path = *remap_target;
             converted_file.source_path = project_dir / gddelta::common::path_from_utf8(input_path.source_path);
             converted_file.removal = !std::filesystem::exists(converted_file.source_path);
             add_unique_file(std::move(converted_file));
-
-            const auto local_remap_path = project_dir / gddelta::common::path_from_utf8(input_path.source_path + ".remap");
-            if(std::filesystem::exists(local_remap_path)) {
-                gddelta::pck::PckWriteFile remap_file;
-                remap_file.pack_path = remap_pack_path;
-                remap_file.source_path = local_remap_path;
-                add_unique_file(std::move(remap_file));
-            }
+            add_existing_remap_file(
+                prepared.files,
+                seen_pack_paths,
+                remap_pack_path,
+                project_dir / gddelta::common::path_from_utf8(input_path.source_path + ".remap")
+            );
             continue;
         }
 
-        for(auto& file : resolver.collect_patch_files({input_path})) {
-            add_unique_file(std::move(file));
-        }
+        add_resolved_patch_files(prepared.files, seen_pack_paths, resolver, input_path.source_path);
     }
 
     if(compile_for_write) {
@@ -1735,26 +1825,34 @@ PreparedRuntimePatchFiles CliSupport::prepare_runtime_patch_files(
     for(const auto& input_path : input_paths) {
         const auto remap_pack_path = input_path + ".remap";
         const auto remap_target = resolve_remap_target_pack_path(base_reader, project_dir, input_path);
+        const auto script_remap_target = normalize_script_remap_target(remap_target);
+        if(script_remap_target.has_value()) {
+            add_resolved_patch_files(prepared.files, seen_pack_paths, resolver, input_path);
+            add_existing_remap_file(
+                prepared.files,
+                seen_pack_paths,
+                remap_pack_path,
+                project_dir / gddelta::common::path_from_utf8(remap_pack_path)
+            );
+            continue;
+        }
+
         if(remap_target.has_value() && is_binary_text_resource_pack_path(*remap_target)) {
             gddelta::pck::PckWriteFile converted_file;
             converted_file.pack_path = *remap_target;
             converted_file.source_path = project_dir / gddelta::common::path_from_utf8(input_path);
             converted_file.removal = !std::filesystem::exists(converted_file.source_path);
             add_unique_file(std::move(converted_file));
-
-            const auto local_remap_path = project_dir / gddelta::common::path_from_utf8(remap_pack_path);
-            if(std::filesystem::exists(local_remap_path)) {
-                gddelta::pck::PckWriteFile remap_file;
-                remap_file.pack_path = remap_pack_path;
-                remap_file.source_path = local_remap_path;
-                add_unique_file(std::move(remap_file));
-            }
+            add_existing_remap_file(
+                prepared.files,
+                seen_pack_paths,
+                remap_pack_path,
+                project_dir / gddelta::common::path_from_utf8(remap_pack_path)
+            );
             continue;
         }
 
-        for(auto& file : resolver.collect_patch_files({input_path})) {
-            add_unique_file(std::move(file));
-        }
+        add_resolved_patch_files(prepared.files, seen_pack_paths, resolver, input_path);
     }
 
     if(compile_for_write) {
@@ -1841,6 +1939,16 @@ std::filesystem::path CliSupport::prepare_runtime_patch_files_for_write(
             file.source_path = compiled_it->second;
         }
 
+        for(const auto& [gd_pack_path, gd_source_path] : gd_pack_sources) {
+            const auto compiled_it = compiled_outputs.find(path_to_utf8(gd_source_path));
+            if(compiled_it == compiled_outputs.end()) {
+                continue;
+            }
+
+            const auto gdc_pack_path = replace_virtual_extension(gd_pack_path, ".gdc");
+            upsert_pack_file_source(files, gdc_pack_path, compiled_it->second);
+        }
+
         if(is_godot3) {
             files.erase(
                 std::remove_if(files.begin(), files.end(), [](const gddelta::pck::PckWriteFile& file) {
@@ -1863,8 +1971,22 @@ std::filesystem::path CliSupport::prepare_runtime_patch_files_for_write(
         file.source_path = converted_config;
     }
 
+    std::unordered_map<std::string, std::string> script_remap_targets;
+    std::unordered_map<std::string, std::string> original_script_remap_targets;
+    for(const auto& [source_pack_path, remap_source_path] : remap_pack_sources) {
+        if(!gd_pack_sources.contains(source_pack_path)) continue;
+
+        const auto remap_target = read_remap_target_pack_path(remap_source_path);
+        const auto normalized_target = normalize_script_remap_target(remap_target);
+        if(!normalized_target.has_value()) continue;
+
+        script_remap_targets[source_pack_path] = *normalized_target;
+        original_script_remap_targets[source_pack_path] = *remap_target;
+    }
+
     std::unordered_map<std::string, std::string> resolved_remap_targets;
     for(const auto& [source_pack_path, remap_source_path] : remap_pack_sources) {
+        if(gd_pack_sources.contains(source_pack_path)) continue;
         const auto remap_target = read_remap_target_pack_path(remap_source_path);
         if(!is_binary_remap_target(remap_target)) continue;
         resolved_remap_targets[source_pack_path] = *remap_target;
@@ -1872,6 +1994,18 @@ std::filesystem::path CliSupport::prepare_runtime_patch_files_for_write(
 
     if(legacy_simple) {
         legacy_base_reader = open_supported_base_pack(base_pck);
+        for(const auto& [source_pack_path, source_script_path] : gd_pack_sources) {
+            if(script_remap_targets.contains(source_pack_path)) continue;
+
+            const auto project_root = derive_project_root_from_source(source_script_path, source_pack_path);
+            const auto remap_target = resolve_remap_target_pack_path(*legacy_base_reader, project_root, source_pack_path);
+            const auto normalized_target = normalize_script_remap_target(remap_target);
+            if(!normalized_target.has_value()) continue;
+
+            script_remap_targets[source_pack_path] = *normalized_target;
+            original_script_remap_targets[source_pack_path] = *remap_target;
+        }
+
         for(const auto& [source_pack_path, source_text_path] : text_pack_sources) {
             if(resolved_remap_targets.contains(source_pack_path)) continue;
 
@@ -1880,6 +2014,26 @@ std::filesystem::path CliSupport::prepare_runtime_patch_files_for_write(
             if(!is_binary_remap_target(remap_target)) continue;
             resolved_remap_targets[source_pack_path] = *remap_target;
         }
+    }
+
+    for(const auto& [source_pack_path, remap_target] : script_remap_targets) {
+        const auto remap_output_path = temp_root / "script_remaps" / std::to_string(std::hash<std::string>{}(source_pack_path)) / std::filesystem::path(source_pack_path + ".remap").filename();
+        upsert_pack_file_source(files, source_pack_path + ".remap", write_remap_file(remap_output_path, remap_target));
+
+        const auto original_it = original_script_remap_targets.find(source_pack_path);
+        if(original_it == original_script_remap_targets.end()) continue;
+        if(original_it->second == remap_target) continue;
+        if(pack_options.format_version <= 1) continue;
+
+        const auto already_present = std::any_of(files.begin(), files.end(), [&](const gddelta::pck::PckWriteFile& file) {
+            return file.pack_path == original_it->second;
+        });
+        if(already_present) continue;
+
+        gddelta::pck::PckWriteFile removal_file;
+        removal_file.pack_path = original_it->second;
+        removal_file.removal = true;
+        files.push_back(std::move(removal_file));
     }
 
     std::unordered_set<std::string> converted_remap_sources;
