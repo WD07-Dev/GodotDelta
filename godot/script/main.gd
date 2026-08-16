@@ -214,7 +214,7 @@ func _update_advanced_state() -> void:
 	_update_base_key_visibility()
 
 func _update_base_key_visibility() -> void:
-	var show_base_key := advanced_toggle.button_pressed && tabs.current_tab > 0
+	var show_base_key := advanced_toggle.button_pressed
 	base_key_label.visible = show_base_key
 	base_key_row.visible = show_base_key
 

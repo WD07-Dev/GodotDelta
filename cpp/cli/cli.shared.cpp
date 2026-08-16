@@ -375,11 +375,24 @@ std::optional<std::filesystem::path> find_text_pack_source_path(
     return std::nullopt;
 }
 
+std::optional<std::string> resolve_remap_target_pack_path(
+    const gddelta::pck::PckReader& reader,
+    const std::filesystem::path& project_dir,
+    std::string_view input_path
+);
+
 bool is_binary_remap_target(const std::optional<std::string>& remap_target) {
     if(!remap_target.has_value()) {
         return false;
     }
     return is_binary_text_resource_pack_path(*remap_target);
+}
+
+bool should_skip_runtime_support_file(const std::filesystem::path& candidate) {
+    const auto file_name = path_to_utf8(candidate.filename());
+    return file_name == ".gddelta_cleanup.tmp.pck"
+    || file_name.ends_with(".apply.tmp.pck")
+    || file_name.ends_with(".devbuild.runtime_patch.tmp.pck");
 }
 
 std::optional<std::string> normalize_script_remap_target(const std::optional<std::string>& remap_target) {
@@ -442,6 +455,22 @@ void add_resolved_patch_files(
     }
 }
 
+void add_binary_remap_source_file(
+    std::vector<gddelta::pck::PckWriteFile>& files,
+    std::unordered_set<std::string>& seen_pack_paths,
+    std::string_view pack_path,
+    const std::filesystem::path& source_path
+) {
+    if(pack_path.empty() || seen_pack_paths.contains(std::string(pack_path))) return;
+
+    seen_pack_paths.insert(std::string(pack_path));
+    gddelta::pck::PckWriteFile file;
+    file.pack_path = std::string(pack_path);
+    file.source_path = source_path;
+    file.removal = !std::filesystem::exists(source_path);
+    files.push_back(std::move(file));
+}
+
 void upsert_pack_file_source(
     std::vector<gddelta::pck::PckWriteFile>& files,
     std::string_view pack_path,
@@ -459,6 +488,39 @@ void upsert_pack_file_source(
     added_file.source_path = source_path;
     added_file.removal = false;
     files.push_back(std::move(added_file));
+}
+
+void collect_prepared_runtime_patch_file(
+    std::vector<gddelta::pck::PckWriteFile>& files,
+    std::unordered_set<std::string>& seen_pack_paths,
+    const gddelta::patch::RuntimePatchResolver& resolver,
+    const gddelta::pck::PckReader& base_reader,
+    const std::filesystem::path& project_dir,
+    std::string_view source_path,
+    std::string_view pack_path
+) {
+    const auto remap_pack_path = std::string(pack_path) + ".remap";
+    const auto remap_target = resolve_remap_target_pack_path(base_reader, project_dir, source_path);
+    const auto remap_source_path = project_dir / gddelta::common::path_from_utf8(std::string(source_path) + ".remap");
+
+    if(normalize_script_remap_target(remap_target).has_value()) {
+        add_resolved_patch_files(files, seen_pack_paths, resolver, source_path);
+        add_existing_remap_file(files, seen_pack_paths, remap_pack_path, remap_source_path);
+        return;
+    }
+
+    if(remap_target.has_value() && is_binary_text_resource_pack_path(*remap_target)) {
+        add_binary_remap_source_file(
+            files,
+            seen_pack_paths,
+            pack_path,
+            project_dir / gddelta::common::path_from_utf8(std::string(source_path))
+        );
+        add_existing_remap_file(files, seen_pack_paths, remap_pack_path, remap_source_path);
+        return;
+    }
+
+    add_resolved_patch_files(files, seen_pack_paths, resolver, source_path);
 }
 
 std::vector<std::string> collect_all_project_source_inputs(const std::filesystem::path& project_dir) {
@@ -1751,53 +1813,27 @@ PreparedRuntimePatchFiles CliSupport::prepare_runtime_patch_files(
 ) const {
     PreparedRuntimePatchFiles prepared;
     const auto options = build_pack_options_from_base(base_pck);
+    const auto legacy_simple = options.format_version == 1;
     const gddelta::patch::RuntimePatchResolver resolver(project_dir);
     const auto base_reader = open_supported_base_pack(base_pck);
     std::cout << "[prepare] Collecting patch files from " << input_paths.size() << " input(s)\n";
 
     std::unordered_set<std::string> seen_pack_paths;
-    const auto add_unique_file = [&](gddelta::pck::PckWriteFile file) {
-        if(file.pack_path.empty() || seen_pack_paths.contains(file.pack_path)) return;
-        seen_pack_paths.insert(file.pack_path);
-        prepared.files.push_back(std::move(file));
-    };
-
     for(const auto& input_path : input_paths) {
-        const auto remap_pack_path = input_path.pack_path + ".remap";
-        const auto remap_target = resolve_remap_target_pack_path(base_reader, project_dir, input_path.source_path);
-        const auto script_remap_target = normalize_script_remap_target(remap_target);
-        if(script_remap_target.has_value()) {
-            add_resolved_patch_files(prepared.files, seen_pack_paths, resolver, input_path.source_path);
-            add_existing_remap_file(
-                prepared.files,
-                seen_pack_paths,
-                remap_pack_path,
-                project_dir / gddelta::common::path_from_utf8(input_path.source_path + ".remap")
-            );
-            continue;
-        }
-
-        if(remap_target.has_value() && is_binary_text_resource_pack_path(*remap_target)) {
-            gddelta::pck::PckWriteFile converted_file;
-            converted_file.pack_path = *remap_target;
-            converted_file.source_path = project_dir / gddelta::common::path_from_utf8(input_path.source_path);
-            converted_file.removal = !std::filesystem::exists(converted_file.source_path);
-            add_unique_file(std::move(converted_file));
-            add_existing_remap_file(
-                prepared.files,
-                seen_pack_paths,
-                remap_pack_path,
-                project_dir / gddelta::common::path_from_utf8(input_path.source_path + ".remap")
-            );
-            continue;
-        }
-
-        add_resolved_patch_files(prepared.files, seen_pack_paths, resolver, input_path.source_path);
+        collect_prepared_runtime_patch_file(
+            prepared.files,
+            seen_pack_paths,
+            resolver,
+            base_reader,
+            project_dir,
+            input_path.source_path,
+            input_path.pack_path
+        );
     }
 
     if(compile_for_write) {
         std::cout << "[prepare] Preparing files for write/compile\n";
-        prepared.temp_dir = prepare_runtime_patch_files_for_write(base_pck, prepared.files);
+        prepared.temp_dir = prepare_runtime_patch_files_for_write(base_pck, prepared.files, legacy_simple);
     }
     normalize_runtime_patch_files(prepared.files, options);
     return prepared;
@@ -1811,53 +1847,27 @@ PreparedRuntimePatchFiles CliSupport::prepare_runtime_patch_files(
 ) const {
     PreparedRuntimePatchFiles prepared;
     const auto options = build_pack_options_from_base(base_pck);
+    const auto legacy_simple = options.format_version == 1;
     const gddelta::patch::RuntimePatchResolver resolver(project_dir);
     const auto base_reader = open_supported_base_pack(base_pck);
     std::cout << "[prepare] Collecting patch files from " << input_paths.size() << " input(s)\n";
 
     std::unordered_set<std::string> seen_pack_paths;
-    const auto add_unique_file = [&](gddelta::pck::PckWriteFile file) {
-        if(file.pack_path.empty() || seen_pack_paths.contains(file.pack_path)) return;
-        seen_pack_paths.insert(file.pack_path);
-        prepared.files.push_back(std::move(file));
-    };
-
     for(const auto& input_path : input_paths) {
-        const auto remap_pack_path = input_path + ".remap";
-        const auto remap_target = resolve_remap_target_pack_path(base_reader, project_dir, input_path);
-        const auto script_remap_target = normalize_script_remap_target(remap_target);
-        if(script_remap_target.has_value()) {
-            add_resolved_patch_files(prepared.files, seen_pack_paths, resolver, input_path);
-            add_existing_remap_file(
-                prepared.files,
-                seen_pack_paths,
-                remap_pack_path,
-                project_dir / gddelta::common::path_from_utf8(remap_pack_path)
-            );
-            continue;
-        }
-
-        if(remap_target.has_value() && is_binary_text_resource_pack_path(*remap_target)) {
-            gddelta::pck::PckWriteFile converted_file;
-            converted_file.pack_path = *remap_target;
-            converted_file.source_path = project_dir / gddelta::common::path_from_utf8(input_path);
-            converted_file.removal = !std::filesystem::exists(converted_file.source_path);
-            add_unique_file(std::move(converted_file));
-            add_existing_remap_file(
-                prepared.files,
-                seen_pack_paths,
-                remap_pack_path,
-                project_dir / gddelta::common::path_from_utf8(remap_pack_path)
-            );
-            continue;
-        }
-
-        add_resolved_patch_files(prepared.files, seen_pack_paths, resolver, input_path);
+        collect_prepared_runtime_patch_file(
+            prepared.files,
+            seen_pack_paths,
+            resolver,
+            base_reader,
+            project_dir,
+            input_path,
+            input_path
+        );
     }
 
     if(compile_for_write) {
         std::cout << "[prepare] Preparing files for write/compile\n";
-        prepared.temp_dir = prepare_runtime_patch_files_for_write(base_pck, prepared.files);
+        prepared.temp_dir = prepare_runtime_patch_files_for_write(base_pck, prepared.files, legacy_simple);
     }
     normalize_runtime_patch_files(prepared.files, options);
     return prepared;
@@ -2152,6 +2162,7 @@ void CliSupport::copy_runtime_support_files(
     for(const auto& entry : std::filesystem::recursive_directory_iterator(base_dir)) {
         const auto candidate = entry.path();
         if(candidate == base_path) continue;
+        if(should_skip_runtime_support_file(candidate)) continue;
         const auto relative_path = std::filesystem::relative(candidate, base_dir);
         const auto destination = sandbox_dir / relative_path;
         std::error_code ec;
