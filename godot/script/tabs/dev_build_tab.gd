@@ -14,12 +14,14 @@ func _on_dev_build_pressed() -> void:
 		[tr("SANDBOX_DIRECTORY"), sandbox_path_edit],
 	])): return;
 
-	controller.run_gddelta([
+	var args: Array = [
 		"dev-build",
 		dev_base_path_edit.text,
 		dev_project_path_edit.text,
 		sandbox_path_edit.text,
-	])
+	]
+	args.append_array(controller.get_base_key_args())
+	controller.run_gddelta(args)
 
 func _on_run_button_pressed() -> void:
 	var controller := _controller()

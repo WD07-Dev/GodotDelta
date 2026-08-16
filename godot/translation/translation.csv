@@ -4,6 +4,8 @@ RUNTIME_STATUS_RESOLVING,gddelta: resolving...,gddelta: 확인 중...
 RUNTIME_STATUS_READY,gddelta: %s,gddelta: %s
 RUNTIME_STATUS_MISSING,gddelta executable was not found.,gddelta 실행 파일을 찾지 못했습니다.
 RUNTIME_STATUS_MISSING_AT,gddelta executable was not found at: %s,gddelta 실행 파일을 찾지 못했습니다: %s
+BASE_KEY_OPTIONAL,Base Key (Optional),Base Key (선택)
+PLACEHOLDER_BASE_KEY,Encryption key for encrypted base packs,암호화된 기본 팩용 키
 ENABLE_ADVANCED_FEATURES,Enable advanced features,고급 기능 사용
 BASE_PCK_EXE,Base PCK / EXE,기본 PCK / EXE
 PLACEHOLDER_BASE_PATH,C:/path/to/game.pck or game.exe,C:/경로/게임.pck 또는 game.exe
@@ -27,6 +29,7 @@ START_WATCH,Start Watch,감시 시작
 STOP_WATCH,Stop Watch,감시 중지
 RUN_GAME,Run Game,게임 실행
 LOG,Log,로그
+CLEAR_LOG,Clear Log,로그 지우기
 SELECT_PATH,Select Path,경로 선택
 BASE_PATH,Base Path,기본 경로
 PROJECT_PATH,Project Path,프로젝트 경로

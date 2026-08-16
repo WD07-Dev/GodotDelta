@@ -1,0 +1,105 @@
+[gd_scene format=3 uid="uid://ivhym2veqx88"]
+
+[ext_resource type="Script" uid="uid://ds2awtcr5qy6q" path="res://script/tabs/patch_tab.gd" id="1_patch"]
+
+[node name="Patch" type="VBoxContainer" unique_id=1010957260]
+theme_override_constants/separation = 8
+script = ExtResource("1_patch")
+metadata/_tab_index = 0
+
+[node name="BaseLabel" type="Label" parent="." unique_id=526866411]
+layout_mode = 2
+text = "BASE_PCK_EXE"
+
+[node name="BaseRow" type="HBoxContainer" parent="." unique_id=367125415]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="BasePath" type="LineEdit" parent="BaseRow" unique_id=322532871]
+layout_mode = 2
+size_flags_horizontal = 3
+placeholder_text = "PLACEHOLDER_BASE_PATH"
+
+[node name="BaseBrowseButton" type="Button" parent="BaseRow" unique_id=1385103327]
+layout_mode = 2
+text = "BROWSE"
+
+[node name="ProjectLabel" type="Label" parent="." unique_id=259807178]
+layout_mode = 2
+text = "PROJECT_DIRECTORY"
+
+[node name="ProjectRow" type="HBoxContainer" parent="." unique_id=2000768277]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="ProjectPath" type="LineEdit" parent="ProjectRow" unique_id=1553962812]
+layout_mode = 2
+size_flags_horizontal = 3
+placeholder_text = "PLACEHOLDER_PROJECT_PATH"
+
+[node name="ProjectBrowseButton" type="Button" parent="ProjectRow" unique_id=1816515050]
+layout_mode = 2
+text = "BROWSE"
+
+[node name="PatchLabel" type="Label" parent="." unique_id=178888970]
+layout_mode = 2
+text = "PATCH_PACKAGE"
+
+[node name="PatchOutputRow" type="HBoxContainer" parent="." unique_id=1695416799]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="PatchPath" type="LineEdit" parent="PatchOutputRow" unique_id=1806966800]
+layout_mode = 2
+size_flags_horizontal = 3
+placeholder_text = "PLACEHOLDER_PATCH_PATH"
+
+[node name="PatchBrowseButton" type="Button" parent="PatchOutputRow" unique_id=1724716590]
+layout_mode = 2
+text = "BROWSE"
+
+[node name="OverwriteCheckBox" type="CheckBox" parent="." unique_id=2050399014]
+layout_mode = 2
+button_pressed = true
+text = "OVERWRITE_BASE"
+
+[node name="ApplyLabel" type="Label" parent="." unique_id=613420412]
+visible = false
+layout_mode = 2
+text = "APPLY_OUTPUT_DIRECTORY"
+
+[node name="ApplyOutputRow" type="HBoxContainer" parent="." unique_id=970710140]
+visible = false
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="ApplyOutputPath" type="LineEdit" parent="ApplyOutputRow" unique_id=1693362155]
+layout_mode = 2
+size_flags_horizontal = 3
+placeholder_text = "PLACEHOLDER_APPLY_OUTPUT_PATH"
+
+[node name="ApplyOutputBrowseButton" type="Button" parent="ApplyOutputRow" unique_id=948827638]
+layout_mode = 2
+text = "BROWSE"
+
+[node name="PatchButtons" type="HBoxContainer" parent="." unique_id=406533543]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="MakePatchButton" type="Button" parent="PatchButtons" unique_id=15647434]
+layout_mode = 2
+size_flags_horizontal = 3
+text = "MAKE_PATCH"
+
+[node name="ApplyButton" type="Button" parent="PatchButtons" unique_id=757377090]
+layout_mode = 2
+size_flags_horizontal = 3
+text = "APPLY"
+
+[connection signal="pressed" from="BaseRow/BaseBrowseButton" to="." method="_on_base_browse_pressed"]
+[connection signal="pressed" from="ProjectRow/ProjectBrowseButton" to="." method="_on_project_browse_pressed"]
+[connection signal="pressed" from="PatchOutputRow/PatchBrowseButton" to="." method="_on_patch_browse_pressed"]
+[connection signal="toggled" from="OverwriteCheckBox" to="." method="_on_overwrite_check_box_toggled"]
+[connection signal="pressed" from="ApplyOutputRow/ApplyOutputBrowseButton" to="." method="_on_apply_output_browse_pressed"]
+[connection signal="pressed" from="PatchButtons/MakePatchButton" to="." method="_on_make_patch_pressed"]
+[connection signal="pressed" from="PatchButtons/ApplyButton" to="." method="_on_apply_pressed"]

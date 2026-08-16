@@ -1,9 +1,9 @@
 [gd_scene format=3 uid="uid://l5l6qqab1mfj"]
 
 [ext_resource type="Script" uid="uid://kt0a84a64en2" path="res://script/main.gd" id="1_x7d3m"]
-[ext_resource type="Script" uid="uid://ds2awtcr5qy6q" path="res://script/tabs/patch_tab.gd" id="2_dky4h"]
-[ext_resource type="Script" uid="uid://duerg7vv1pq6x" path="res://script/tabs/dev_build_tab.gd" id="3_4fjg6"]
-[ext_resource type="Script" uid="uid://m1p5r7wbqibj" path="res://script/tabs/live_patch_tab.gd" id="4_bv6gj"]
+[ext_resource type="PackedScene" uid="uid://ivhym2veqx88" path="res://scenes/patch_tab.tscn" id="2_patch_scene"]
+[ext_resource type="PackedScene" uid="uid://br3slna8kdqmc" path="res://scenes/dev_build_tab.tscn" id="3_dev_scene"]
+[ext_resource type="PackedScene" uid="uid://clx2df7npo7gd" path="res://scenes/live_patch_tab.tscn" id="4_live_scene"]
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_panel"]
 bg_color = Color(0.0941176, 0.105882, 0.133333, 1)
@@ -63,6 +63,20 @@ layout_mode = 2
 theme_override_colors/font_color = Color(0.552941, 0.615686, 0.733333, 1)
 text = "RUNTIME_STATUS_RESOLVING"
 
+[node name="BaseKeyLabel" type="Label" parent="Margin/Root" unique_id=111023001]
+layout_mode = 2
+text = "BASE_KEY_OPTIONAL"
+
+[node name="BaseKeyRow" type="HBoxContainer" parent="Margin/Root" unique_id=111023002]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="BaseKeyPath" type="LineEdit" parent="Margin/Root/BaseKeyRow" unique_id=111023003]
+layout_mode = 2
+size_flags_horizontal = 3
+placeholder_text = "PLACEHOLDER_BASE_KEY"
+secret = true
+
 [node name="AdvancedToggle" type="CheckBox" parent="Margin/Root" unique_id=884014002]
 layout_mode = 2
 text = "ENABLE_ADVANCED_FEATURES"
@@ -73,273 +87,28 @@ size_flags_vertical = 3
 theme_override_styles/panel = SubResource("StyleBoxFlat_panel")
 current_tab = 0
 
-[node name="Patch" type="VBoxContainer" parent="Margin/Root/Tabs" unique_id=1693289324]
+[node name="Patch" parent="Margin/Root/Tabs" unique_id=984564298 instance=ExtResource("2_patch_scene")]
 layout_mode = 2
-theme_override_constants/separation = 8
-script = ExtResource("2_dky4h")
-metadata/_tab_index = 0
 
-[node name="BaseLabel" type="Label" parent="Margin/Root/Tabs/Patch" unique_id=580573311]
-layout_mode = 2
-text = "BASE_PCK_EXE"
-
-[node name="BaseRow" type="HBoxContainer" parent="Margin/Root/Tabs/Patch" unique_id=1126352174]
-layout_mode = 2
-theme_override_constants/separation = 8
-
-[node name="BasePath" type="LineEdit" parent="Margin/Root/Tabs/Patch/BaseRow" unique_id=844493260]
-layout_mode = 2
-size_flags_horizontal = 3
-placeholder_text = "PLACEHOLDER_BASE_PATH"
-
-[node name="BaseBrowseButton" type="Button" parent="Margin/Root/Tabs/Patch/BaseRow" unique_id=1301691190]
-layout_mode = 2
-text = "BROWSE"
-
-[node name="ProjectLabel" type="Label" parent="Margin/Root/Tabs/Patch" unique_id=1803781355]
-layout_mode = 2
-text = "PROJECT_DIRECTORY"
-
-[node name="ProjectRow" type="HBoxContainer" parent="Margin/Root/Tabs/Patch" unique_id=1587274952]
-layout_mode = 2
-theme_override_constants/separation = 8
-
-[node name="ProjectPath" type="LineEdit" parent="Margin/Root/Tabs/Patch/ProjectRow" unique_id=1062229435]
-layout_mode = 2
-size_flags_horizontal = 3
-placeholder_text = "PLACEHOLDER_PROJECT_PATH"
-
-[node name="ProjectBrowseButton" type="Button" parent="Margin/Root/Tabs/Patch/ProjectRow" unique_id=1140655880]
-layout_mode = 2
-text = "BROWSE"
-
-[node name="PatchLabel" type="Label" parent="Margin/Root/Tabs/Patch" unique_id=1867581636]
-layout_mode = 2
-text = "PATCH_PACKAGE"
-
-[node name="PatchOutputRow" type="HBoxContainer" parent="Margin/Root/Tabs/Patch" unique_id=35751516]
-layout_mode = 2
-theme_override_constants/separation = 8
-
-[node name="PatchPath" type="LineEdit" parent="Margin/Root/Tabs/Patch/PatchOutputRow" unique_id=684454955]
-layout_mode = 2
-size_flags_horizontal = 3
-placeholder_text = "PLACEHOLDER_PATCH_PATH"
-
-[node name="PatchBrowseButton" type="Button" parent="Margin/Root/Tabs/Patch/PatchOutputRow" unique_id=1484769160]
-layout_mode = 2
-text = "BROWSE"
-
-[node name="OverwriteCheckBox" type="CheckBox" parent="Margin/Root/Tabs/Patch" unique_id=643544357]
-layout_mode = 2
-button_pressed = true
-text = "OVERWRITE_BASE"
-
-[node name="ApplyLabel" type="Label" parent="Margin/Root/Tabs/Patch" unique_id=1617204302]
+[node name="Patch (DevMode)" parent="Margin/Root/Tabs" unique_id=146118789 instance=ExtResource("3_dev_scene")]
 visible = false
 layout_mode = 2
-text = "APPLY_OUTPUT_DIRECTORY"
 
-[node name="ApplyOutputRow" type="HBoxContainer" parent="Margin/Root/Tabs/Patch" unique_id=484257297]
+[node name="Live Patch (DevMode)" parent="Margin/Root/Tabs" unique_id=949582040 instance=ExtResource("4_live_scene")]
 visible = false
 layout_mode = 2
-theme_override_constants/separation = 8
 
-[node name="ApplyOutputPath" type="LineEdit" parent="Margin/Root/Tabs/Patch/ApplyOutputRow" unique_id=6351473]
+[node name="LogHeaderRow" type="HBoxContainer" parent="Margin/Root" unique_id=111023004]
+layout_mode = 2
+
+[node name="LogLabel" type="Label" parent="Margin/Root/LogHeaderRow" unique_id=706289916]
 layout_mode = 2
 size_flags_horizontal = 3
-placeholder_text = "PLACEHOLDER_APPLY_OUTPUT_PATH"
-
-[node name="ApplyOutputBrowseButton" type="Button" parent="Margin/Root/Tabs/Patch/ApplyOutputRow" unique_id=1699522761]
-layout_mode = 2
-text = "BROWSE"
-
-[node name="PatchButtons" type="HBoxContainer" parent="Margin/Root/Tabs/Patch" unique_id=34955126]
-layout_mode = 2
-theme_override_constants/separation = 8
-
-[node name="MakePatchButton" type="Button" parent="Margin/Root/Tabs/Patch/PatchButtons" unique_id=1980716701]
-layout_mode = 2
-size_flags_horizontal = 3
-text = "MAKE_PATCH"
-
-[node name="ApplyButton" type="Button" parent="Margin/Root/Tabs/Patch/PatchButtons" unique_id=1635344083]
-layout_mode = 2
-size_flags_horizontal = 3
-text = "APPLY"
-
-[node name="Patch (DevMode)" type="VBoxContainer" parent="Margin/Root/Tabs" unique_id=1386460066]
-visible = false
-layout_mode = 2
-theme_override_constants/separation = 8
-script = ExtResource("3_4fjg6")
-metadata/_tab_index = 1
-
-[node name="DevBaseLabel" type="Label" parent="Margin/Root/Tabs/Patch (DevMode)" unique_id=1694170845]
-layout_mode = 2
-text = "BASE_PCK_EXE"
-
-[node name="DevBaseRow" type="HBoxContainer" parent="Margin/Root/Tabs/Patch (DevMode)" unique_id=1099738866]
-layout_mode = 2
-theme_override_constants/separation = 8
-
-[node name="DevBasePath" type="LineEdit" parent="Margin/Root/Tabs/Patch (DevMode)/DevBaseRow" unique_id=1015235871]
-layout_mode = 2
-size_flags_horizontal = 3
-placeholder_text = "PLACEHOLDER_BASE_PATH"
-
-[node name="DevBaseBrowseButton" type="Button" parent="Margin/Root/Tabs/Patch (DevMode)/DevBaseRow" unique_id=508870467]
-layout_mode = 2
-text = "BROWSE"
-
-[node name="DevProjectLabel" type="Label" parent="Margin/Root/Tabs/Patch (DevMode)" unique_id=885870962]
-layout_mode = 2
-text = "PROJECT_DIRECTORY"
-
-[node name="DevProjectRow" type="HBoxContainer" parent="Margin/Root/Tabs/Patch (DevMode)" unique_id=767021033]
-layout_mode = 2
-theme_override_constants/separation = 8
-
-[node name="DevProjectPath" type="LineEdit" parent="Margin/Root/Tabs/Patch (DevMode)/DevProjectRow" unique_id=1325941200]
-layout_mode = 2
-size_flags_horizontal = 3
-placeholder_text = "PLACEHOLDER_PROJECT_PATH"
-
-[node name="DevProjectBrowseButton" type="Button" parent="Margin/Root/Tabs/Patch (DevMode)/DevProjectRow" unique_id=952946058]
-layout_mode = 2
-text = "BROWSE"
-
-[node name="SandboxLabel" type="Label" parent="Margin/Root/Tabs/Patch (DevMode)" unique_id=1247945186]
-layout_mode = 2
-text = "SANDBOX_DIRECTORY"
-
-[node name="SandboxRow" type="HBoxContainer" parent="Margin/Root/Tabs/Patch (DevMode)" unique_id=645742143]
-layout_mode = 2
-theme_override_constants/separation = 8
-
-[node name="SandboxPath" type="LineEdit" parent="Margin/Root/Tabs/Patch (DevMode)/SandboxRow" unique_id=259554233]
-layout_mode = 2
-size_flags_horizontal = 3
-placeholder_text = "PLACEHOLDER_SANDBOX_PATH"
-
-[node name="SandboxBrowseButton" type="Button" parent="Margin/Root/Tabs/Patch (DevMode)/SandboxRow" unique_id=616052042]
-layout_mode = 2
-text = "BROWSE"
-
-[node name="DevButtons" type="HBoxContainer" parent="Margin/Root/Tabs/Patch (DevMode)" unique_id=1165707135]
-layout_mode = 2
-theme_override_constants/separation = 8
-
-[node name="DevBuildButton" type="Button" parent="Margin/Root/Tabs/Patch (DevMode)/DevButtons" unique_id=1507026504]
-layout_mode = 2
-size_flags_horizontal = 3
-text = "DEV_BUILD"
-
-[node name="RunButton" type="Button" parent="Margin/Root/Tabs/Patch (DevMode)/DevButtons" unique_id=214590001]
-layout_mode = 2
-size_flags_horizontal = 3
-text = "RUN_GAME"
-
-[node name="Live Patch (DevMode)" type="VBoxContainer" parent="Margin/Root/Tabs" unique_id=841235111]
-visible = false
-layout_mode = 2
-theme_override_constants/separation = 8
-script = ExtResource("4_bv6gj")
-metadata/_tab_index = 2
-
-[node name="LiveBaseLabel" type="Label" parent="Margin/Root/Tabs/Live Patch (DevMode)" unique_id=512301001]
-layout_mode = 2
-text = "BASE_PCK_EXE"
-
-[node name="LiveBaseRow" type="HBoxContainer" parent="Margin/Root/Tabs/Live Patch (DevMode)" unique_id=512301002]
-layout_mode = 2
-theme_override_constants/separation = 8
-
-[node name="LiveBasePath" type="LineEdit" parent="Margin/Root/Tabs/Live Patch (DevMode)/LiveBaseRow" unique_id=512301003]
-layout_mode = 2
-size_flags_horizontal = 3
-placeholder_text = "PLACEHOLDER_BASE_PATH"
-
-[node name="LiveBaseBrowseButton" type="Button" parent="Margin/Root/Tabs/Live Patch (DevMode)/LiveBaseRow" unique_id=512301004]
-layout_mode = 2
-text = "BROWSE"
-
-[node name="LiveProjectLabel" type="Label" parent="Margin/Root/Tabs/Live Patch (DevMode)" unique_id=512301005]
-layout_mode = 2
-text = "PROJECT_DIRECTORY"
-
-[node name="LiveProjectRow" type="HBoxContainer" parent="Margin/Root/Tabs/Live Patch (DevMode)" unique_id=512301006]
-layout_mode = 2
-theme_override_constants/separation = 8
-
-[node name="LiveProjectPath" type="LineEdit" parent="Margin/Root/Tabs/Live Patch (DevMode)/LiveProjectRow" unique_id=512301007]
-layout_mode = 2
-size_flags_horizontal = 3
-placeholder_text = "PLACEHOLDER_PROJECT_PATH"
-
-[node name="LiveProjectBrowseButton" type="Button" parent="Margin/Root/Tabs/Live Patch (DevMode)/LiveProjectRow" unique_id=512301008]
-layout_mode = 2
-text = "BROWSE"
-
-[node name="LivePatchLabel" type="Label" parent="Margin/Root/Tabs/Live Patch (DevMode)" unique_id=512301009]
-layout_mode = 2
-text = "LIVE_PATCH_PCK"
-
-[node name="LivePatchRow" type="HBoxContainer" parent="Margin/Root/Tabs/Live Patch (DevMode)" unique_id=512301010]
-layout_mode = 2
-theme_override_constants/separation = 8
-
-[node name="LivePatchPath" type="LineEdit" parent="Margin/Root/Tabs/Live Patch (DevMode)/LivePatchRow" unique_id=512301011]
-layout_mode = 2
-size_flags_horizontal = 3
-placeholder_text = "PLACEHOLDER_LIVE_PATCH_PATH"
-
-[node name="LivePatchBrowseButton" type="Button" parent="Margin/Root/Tabs/Live Patch (DevMode)/LivePatchRow" unique_id=512301012]
-layout_mode = 2
-text = "BROWSE"
-
-[node name="LiveSandboxLabel" type="Label" parent="Margin/Root/Tabs/Live Patch (DevMode)" unique_id=512301013]
-layout_mode = 2
-text = "SANDBOX_DIRECTORY"
-
-[node name="LiveSandboxRow" type="HBoxContainer" parent="Margin/Root/Tabs/Live Patch (DevMode)" unique_id=512301014]
-layout_mode = 2
-theme_override_constants/separation = 8
-
-[node name="LiveSandboxPath" type="LineEdit" parent="Margin/Root/Tabs/Live Patch (DevMode)/LiveSandboxRow" unique_id=512301015]
-layout_mode = 2
-size_flags_horizontal = 3
-placeholder_text = "PLACEHOLDER_SANDBOX_PATH"
-
-[node name="LiveSandboxBrowseButton" type="Button" parent="Margin/Root/Tabs/Live Patch (DevMode)/LiveSandboxRow" unique_id=512301016]
-layout_mode = 2
-text = "BROWSE"
-
-[node name="LiveIntervalLabel" type="Label" parent="Margin/Root/Tabs/Live Patch (DevMode)" unique_id=512301017]
-layout_mode = 2
-text = "WATCH_INTERVAL_MS"
-
-[node name="LiveIntervalPath" type="LineEdit" parent="Margin/Root/Tabs/Live Patch (DevMode)" unique_id=512301018]
-layout_mode = 2
-text = "500"
-
-[node name="LiveButtons" type="HBoxContainer" parent="Margin/Root/Tabs/Live Patch (DevMode)" unique_id=512301019]
-layout_mode = 2
-theme_override_constants/separation = 8
-
-[node name="WatchButton" type="Button" parent="Margin/Root/Tabs/Live Patch (DevMode)/LiveButtons" unique_id=57623268]
-layout_mode = 2
-size_flags_horizontal = 3
-text = "START_WATCH"
-
-[node name="RunButton" type="Button" parent="Margin/Root/Tabs/Live Patch (DevMode)/LiveButtons" unique_id=2088071275]
-layout_mode = 2
-size_flags_horizontal = 3
-text = "RUN_GAME"
-
-[node name="LogLabel" type="Label" parent="Margin/Root" unique_id=706289916]
-layout_mode = 2
 text = "LOG"
+
+[node name="ClearLogButton" type="Button" parent="Margin/Root/LogHeaderRow" unique_id=111023005]
+layout_mode = 2
+text = "CLEAR_LOG"
 
 [node name="LogOutput" type="TextEdit" parent="Margin/Root" unique_id=1587156904]
 layout_mode = 2
@@ -354,23 +123,6 @@ use_native_dialog = true
 
 [connection signal="watch_state_changed" from="." to="Margin/Root/Tabs/Live Patch (DevMode)" method="_on_watch_state_changed"]
 [connection signal="toggled" from="Margin/Root/AdvancedToggle" to="." method="_on_advanced_toggle_toggled"]
-[connection signal="pressed" from="Margin/Root/Tabs/Patch/BaseRow/BaseBrowseButton" to="Margin/Root/Tabs/Patch" method="_on_base_browse_pressed"]
-[connection signal="pressed" from="Margin/Root/Tabs/Patch/ProjectRow/ProjectBrowseButton" to="Margin/Root/Tabs/Patch" method="_on_project_browse_pressed"]
-[connection signal="pressed" from="Margin/Root/Tabs/Patch/PatchOutputRow/PatchBrowseButton" to="Margin/Root/Tabs/Patch" method="_on_patch_browse_pressed"]
-[connection signal="toggled" from="Margin/Root/Tabs/Patch/OverwriteCheckBox" to="Margin/Root/Tabs/Patch" method="_on_overwrite_check_box_toggled"]
-[connection signal="pressed" from="Margin/Root/Tabs/Patch/ApplyOutputRow/ApplyOutputBrowseButton" to="Margin/Root/Tabs/Patch" method="_on_apply_output_browse_pressed"]
-[connection signal="pressed" from="Margin/Root/Tabs/Patch/PatchButtons/MakePatchButton" to="Margin/Root/Tabs/Patch" method="_on_make_patch_pressed"]
-[connection signal="pressed" from="Margin/Root/Tabs/Patch/PatchButtons/ApplyButton" to="Margin/Root/Tabs/Patch" method="_on_apply_pressed"]
-[connection signal="pressed" from="Margin/Root/Tabs/Patch (DevMode)/DevBaseRow/DevBaseBrowseButton" to="Margin/Root/Tabs/Patch (DevMode)" method="_on_dev_base_browse_pressed"]
-[connection signal="pressed" from="Margin/Root/Tabs/Patch (DevMode)/DevProjectRow/DevProjectBrowseButton" to="Margin/Root/Tabs/Patch (DevMode)" method="_on_dev_project_browse_pressed"]
-[connection signal="pressed" from="Margin/Root/Tabs/Patch (DevMode)/SandboxRow/SandboxBrowseButton" to="Margin/Root/Tabs/Patch (DevMode)" method="_on_sandbox_browse_pressed"]
-[connection signal="pressed" from="Margin/Root/Tabs/Patch (DevMode)/DevButtons/DevBuildButton" to="Margin/Root/Tabs/Patch (DevMode)" method="_on_dev_build_pressed"]
-[connection signal="pressed" from="Margin/Root/Tabs/Patch (DevMode)/DevButtons/RunButton" to="Margin/Root/Tabs/Patch (DevMode)" method="_on_run_button_pressed"]
-[connection signal="pressed" from="Margin/Root/Tabs/Live Patch (DevMode)/LiveBaseRow/LiveBaseBrowseButton" to="Margin/Root/Tabs/Live Patch (DevMode)" method="_on_dev_base_browse_pressed"]
-[connection signal="pressed" from="Margin/Root/Tabs/Live Patch (DevMode)/LiveProjectRow/LiveProjectBrowseButton" to="Margin/Root/Tabs/Live Patch (DevMode)" method="_on_dev_project_browse_pressed"]
-[connection signal="pressed" from="Margin/Root/Tabs/Live Patch (DevMode)/LivePatchRow/LivePatchBrowseButton" to="Margin/Root/Tabs/Live Patch (DevMode)" method="_on_dev_patch_browse_pressed"]
-[connection signal="pressed" from="Margin/Root/Tabs/Live Patch (DevMode)/LiveSandboxRow/LiveSandboxBrowseButton" to="Margin/Root/Tabs/Live Patch (DevMode)" method="_on_sandbox_browse_pressed"]
-[connection signal="pressed" from="Margin/Root/Tabs/Live Patch (DevMode)/LiveButtons/WatchButton" to="Margin/Root/Tabs/Live Patch (DevMode)" method="_on_watch_pressed"]
-[connection signal="pressed" from="Margin/Root/Tabs/Live Patch (DevMode)/LiveButtons/RunButton" to="Margin/Root/Tabs/Live Patch (DevMode)" method="_on_run_button_pressed"]
+[connection signal="pressed" from="Margin/Root/LogHeaderRow/ClearLogButton" to="." method="_on_clear_log_pressed"]
 [connection signal="dir_selected" from="PathDialog" to="." method="_on_path_dialog_dir_selected"]
 [connection signal="file_selected" from="PathDialog" to="." method="_on_path_dialog_file_selected"]

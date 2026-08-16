@@ -118,10 +118,7 @@ void CliApplication::print_usage() {
 }
 
 bool CliApplication::require_arg_count(int argc, int required_argc) {
-    if(argc >= required_argc) {
-        return true;
-    }
-
+    if(argc >= required_argc) return true;
     print_usage();
     return false;
 }

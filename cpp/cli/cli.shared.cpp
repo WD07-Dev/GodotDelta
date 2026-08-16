@@ -311,10 +311,10 @@ bool is_preferred_text_resource_binary_output(
 
 bool is_binary_text_resource_pack_path(std::string_view path) {
     return has_virtual_extension(path, ".converted.res")
-        || has_virtual_extension(path, ".converted.scn")
-        || has_virtual_extension(path, ".res")
-        || has_virtual_extension(path, ".scn")
-        || has_virtual_extension(path, ".gdc");
+    || has_virtual_extension(path, ".converted.scn")
+    || has_virtual_extension(path, ".res")
+    || has_virtual_extension(path, ".scn")
+    || has_virtual_extension(path, ".gdc");
 }
 
 std::filesystem::path select_best_text_resource_binary_output(
@@ -713,9 +713,7 @@ void ensure_text_line_in_section(
     if(line_found) return;
 
     if(!section_found) {
-        if(!lines.empty() && !lines.back().empty()) {
-            lines.emplace_back();
-        }
+        if(!lines.empty() && !lines.back().empty()) lines.emplace_back();
         lines.emplace_back(section_header);
         lines.emplace_back();
         lines.emplace_back(requested_line);
@@ -1344,9 +1342,7 @@ CompiledGDScriptOutputs CliSupport::compile_gdscript_files(
         try {
             command_output = run_gdre_tools_command(args);
         } catch(const std::exception& exception) {
-            if(!allow_partial_failures) {
-                throw;
-            }
+            if(!allow_partial_failures) throw;
             command_output = exception.what();
         }
         for(const auto& source_file : batch) {
@@ -1898,7 +1894,6 @@ std::filesystem::path CliSupport::prepare_runtime_patch_files_for_write(
             cache_discriminator
         );
         upsert_pack_file_source(files, remap_target, converted_source_path);
-
         converted_remap_sources.insert(source_pack_path);
     }
 

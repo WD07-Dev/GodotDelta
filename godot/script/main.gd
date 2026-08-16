@@ -3,6 +3,9 @@ signal watch_state_changed(running: bool)
 
 @onready var advanced_toggle: CheckBox = $Margin/Root/AdvancedToggle
 @onready var runtime_status_label: Label = $Margin/Root/RuntimeStatus
+@onready var base_key_label: Label = $Margin/Root/BaseKeyLabel
+@onready var base_key_row: HBoxContainer = $Margin/Root/BaseKeyRow
+@onready var base_key_edit: LineEdit = $Margin/Root/BaseKeyRow/BaseKeyPath
 @onready var tabs: TabContainer = $Margin/Root/Tabs
 @onready var patch_tab: VBoxContainer = $Margin/Root/Tabs/Patch
 @onready var path_dialog: FileDialog = $PathDialog
@@ -25,6 +28,7 @@ func _ready() -> void:
 	gddelta_executable_path = _default_gddelta_path()
 	_update_runtime_status()
 	_update_advanced_state()
+	tabs.tab_changed.connect(_on_tabs_tab_changed)
 
 func _exit_tree() -> void:
 	stop_watch_process()
@@ -95,6 +99,15 @@ func append_log(message: String) -> void:
 	log_output.text += message + "\n"
 	log_output.scroll_vertical = log_output.get_line_count()
 
+func clear_log() -> void:
+	log_output.text = ""
+
+func get_base_key_args() -> Array:
+	var base_key := base_key_edit.text.strip_edges()
+	if(base_key.is_empty()):
+		return []
+	return ["--base-key", base_key]
+
 func validate_required_paths(required_fields: Array) -> bool:
 	for entry in required_fields:
 		var label: String = entry[0]
@@ -125,7 +138,8 @@ func start_watch_process(
 	project_path: String,
 	patch_path: String,
 	sandbox_path: String,
-	interval_text: String
+	interval_text: String,
+	base_key_args: Array = []
 ) -> bool:
 	var executable := gddelta_executable_path.strip_edges()
 	if(executable.is_empty()):
@@ -142,6 +156,8 @@ func start_watch_process(
 		"--log-file",
 		_resolve_watch_log_path(sandbox_path),
 	])
+	for arg in base_key_args:
+		args.append(str(arg))
 	append_log("> " + executable + " " + " ".join(args))
 	var pid := OS.create_process(executable, args, false)
 	if(pid == -1):
@@ -195,6 +211,16 @@ func _update_advanced_state() -> void:
 	if(patch_tab.has_method("set_advanced_enabled")):
 		patch_tab.call("set_advanced_enabled", advanced_enabled)
 
+	_update_base_key_visibility()
+
+func _update_base_key_visibility() -> void:
+	var show_base_key := advanced_toggle.button_pressed && tabs.current_tab > 0
+	base_key_label.visible = show_base_key
+	base_key_row.visible = show_base_key
+
+func _on_tabs_tab_changed(_tab: int) -> void:
+	_update_base_key_visibility()
+
 func _on_path_dialog_file_selected(path: String) -> void:
 	if(current_path_target != null):
 		current_path_target.text = path
@@ -202,6 +228,9 @@ func _on_path_dialog_file_selected(path: String) -> void:
 func _on_path_dialog_dir_selected(dir: String) -> void:
 	if(current_path_target != null):
 		current_path_target.text = dir
+
+func _on_clear_log_pressed() -> void:
+	clear_log()
 
 func _default_gddelta_path() -> String:
 	var executable_dir := OS.get_executable_path().get_base_dir()

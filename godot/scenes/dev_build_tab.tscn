@@ -1,0 +1,79 @@
+[gd_scene format=3 uid="uid://br3slna8kdqmc"]
+
+[ext_resource type="Script" uid="uid://duerg7vv1pq6x" path="res://script/tabs/dev_build_tab.gd" id="1_dev"]
+
+[node name="Patch (DevMode)" type="VBoxContainer" unique_id=961637599]
+theme_override_constants/separation = 8
+script = ExtResource("1_dev")
+metadata/_tab_index = 1
+
+[node name="DevBaseLabel" type="Label" parent="." unique_id=1386973087]
+layout_mode = 2
+text = "BASE_PCK_EXE"
+
+[node name="DevBaseRow" type="HBoxContainer" parent="." unique_id=1719741890]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="DevBasePath" type="LineEdit" parent="DevBaseRow" unique_id=214814410]
+layout_mode = 2
+size_flags_horizontal = 3
+placeholder_text = "PLACEHOLDER_BASE_PATH"
+
+[node name="DevBaseBrowseButton" type="Button" parent="DevBaseRow" unique_id=1170616498]
+layout_mode = 2
+text = "BROWSE"
+
+[node name="DevProjectLabel" type="Label" parent="." unique_id=1287940139]
+layout_mode = 2
+text = "PROJECT_DIRECTORY"
+
+[node name="DevProjectRow" type="HBoxContainer" parent="." unique_id=1317797684]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="DevProjectPath" type="LineEdit" parent="DevProjectRow" unique_id=75649008]
+layout_mode = 2
+size_flags_horizontal = 3
+placeholder_text = "PLACEHOLDER_PROJECT_PATH"
+
+[node name="DevProjectBrowseButton" type="Button" parent="DevProjectRow" unique_id=1486527549]
+layout_mode = 2
+text = "BROWSE"
+
+[node name="SandboxLabel" type="Label" parent="." unique_id=1422784880]
+layout_mode = 2
+text = "SANDBOX_DIRECTORY"
+
+[node name="SandboxRow" type="HBoxContainer" parent="." unique_id=1294405831]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="SandboxPath" type="LineEdit" parent="SandboxRow" unique_id=1053910998]
+layout_mode = 2
+size_flags_horizontal = 3
+placeholder_text = "PLACEHOLDER_SANDBOX_PATH"
+
+[node name="SandboxBrowseButton" type="Button" parent="SandboxRow" unique_id=2041697250]
+layout_mode = 2
+text = "BROWSE"
+
+[node name="DevButtons" type="HBoxContainer" parent="." unique_id=1415813655]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="DevBuildButton" type="Button" parent="DevButtons" unique_id=1495524013]
+layout_mode = 2
+size_flags_horizontal = 3
+text = "DEV_BUILD"
+
+[node name="RunButton" type="Button" parent="DevButtons" unique_id=71097394]
+layout_mode = 2
+size_flags_horizontal = 3
+text = "RUN_GAME"
+
+[connection signal="pressed" from="DevBaseRow/DevBaseBrowseButton" to="." method="_on_dev_base_browse_pressed"]
+[connection signal="pressed" from="DevProjectRow/DevProjectBrowseButton" to="." method="_on_dev_project_browse_pressed"]
+[connection signal="pressed" from="SandboxRow/SandboxBrowseButton" to="." method="_on_sandbox_browse_pressed"]
+[connection signal="pressed" from="DevButtons/DevBuildButton" to="." method="_on_dev_build_pressed"]
+[connection signal="pressed" from="DevButtons/RunButton" to="." method="_on_run_button_pressed"]

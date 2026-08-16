@@ -15,6 +15,13 @@
 
 namespace {
     class ScopedLogRedirect {
+        private:
+            std::ofstream stream_;
+            std::streambuf* old_cout_ = nullptr;
+            std::streambuf* old_cerr_ = nullptr;
+            std::ios::fmtflags old_cout_flags_{};
+            std::ios::fmtflags old_cerr_flags_{};
+        
         public:
             explicit ScopedLogRedirect(const std::optional<std::filesystem::path>& log_file_path) {
                 if(!log_file_path.has_value()) return;
@@ -44,13 +51,6 @@ namespace {
                     std::cerr.flags(old_cerr_flags_);
                 }
             }
-
-        private:
-            std::ofstream stream_;
-            std::streambuf* old_cout_ = nullptr;
-            std::streambuf* old_cerr_ = nullptr;
-            std::ios::fmtflags old_cout_flags_{};
-            std::ios::fmtflags old_cerr_flags_{};
     };
 
     void remove_if_exists(const std::filesystem::path& path) {
@@ -88,6 +88,9 @@ namespace {
     }
 
     class LegacyV1Pipeline {
+        private:
+            const cli_internal::CliSupport& support_;
+        
         public:
             explicit LegacyV1Pipeline(const cli_internal::CliSupport& support):
                 support_(support) {
@@ -172,9 +175,6 @@ namespace {
                 }
                 return prepared;
             }
-
-        private:
-            const cli_internal::CliSupport& support_;
     };
 }
 

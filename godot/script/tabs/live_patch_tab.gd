@@ -32,7 +32,8 @@ func _on_watch_pressed() -> void:
 		dev_project_path_edit.text,
 		dev_patch_path_edit.text,
 		sandbox_path_edit.text,
-		interval_edit.text
+		interval_edit.text,
+		controller.get_base_key_args()
 	)
 
 func _on_run_button_pressed() -> void:

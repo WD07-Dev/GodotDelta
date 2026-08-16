@@ -1,0 +1,105 @@
+[gd_scene format=3 uid="uid://clx2df7npo7gd"]
+
+[ext_resource type="Script" uid="uid://m1p5r7wbqibj" path="res://script/tabs/live_patch_tab.gd" id="1_live"]
+
+[node name="Live Patch (DevMode)" type="VBoxContainer" unique_id=745652379]
+theme_override_constants/separation = 8
+script = ExtResource("1_live")
+metadata/_tab_index = 2
+
+[node name="LiveBaseLabel" type="Label" parent="." unique_id=2059239543]
+layout_mode = 2
+text = "BASE_PCK_EXE"
+
+[node name="LiveBaseRow" type="HBoxContainer" parent="." unique_id=490500001]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="LiveBasePath" type="LineEdit" parent="LiveBaseRow" unique_id=930281894]
+layout_mode = 2
+size_flags_horizontal = 3
+placeholder_text = "PLACEHOLDER_BASE_PATH"
+
+[node name="LiveBaseBrowseButton" type="Button" parent="LiveBaseRow" unique_id=648863232]
+layout_mode = 2
+text = "BROWSE"
+
+[node name="LiveProjectLabel" type="Label" parent="." unique_id=385813418]
+layout_mode = 2
+text = "PROJECT_DIRECTORY"
+
+[node name="LiveProjectRow" type="HBoxContainer" parent="." unique_id=1789848766]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="LiveProjectPath" type="LineEdit" parent="LiveProjectRow" unique_id=1419553186]
+layout_mode = 2
+size_flags_horizontal = 3
+placeholder_text = "PLACEHOLDER_PROJECT_PATH"
+
+[node name="LiveProjectBrowseButton" type="Button" parent="LiveProjectRow" unique_id=795642825]
+layout_mode = 2
+text = "BROWSE"
+
+[node name="LivePatchLabel" type="Label" parent="." unique_id=326981484]
+layout_mode = 2
+text = "LIVE_PATCH_PCK"
+
+[node name="LivePatchRow" type="HBoxContainer" parent="." unique_id=66756113]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="LivePatchPath" type="LineEdit" parent="LivePatchRow" unique_id=226474545]
+layout_mode = 2
+size_flags_horizontal = 3
+placeholder_text = "PLACEHOLDER_LIVE_PATCH_PATH"
+
+[node name="LivePatchBrowseButton" type="Button" parent="LivePatchRow" unique_id=1104747006]
+layout_mode = 2
+text = "BROWSE"
+
+[node name="LiveSandboxLabel" type="Label" parent="." unique_id=819212662]
+layout_mode = 2
+text = "SANDBOX_DIRECTORY"
+
+[node name="LiveSandboxRow" type="HBoxContainer" parent="." unique_id=165677115]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="LiveSandboxPath" type="LineEdit" parent="LiveSandboxRow" unique_id=498778912]
+layout_mode = 2
+size_flags_horizontal = 3
+placeholder_text = "PLACEHOLDER_SANDBOX_PATH"
+
+[node name="LiveSandboxBrowseButton" type="Button" parent="LiveSandboxRow" unique_id=1503091070]
+layout_mode = 2
+text = "BROWSE"
+
+[node name="LiveIntervalLabel" type="Label" parent="." unique_id=1873157100]
+layout_mode = 2
+text = "WATCH_INTERVAL_MS"
+
+[node name="LiveIntervalPath" type="LineEdit" parent="." unique_id=1095294122]
+layout_mode = 2
+text = "500"
+
+[node name="LiveButtons" type="HBoxContainer" parent="." unique_id=360954791]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="WatchButton" type="Button" parent="LiveButtons" unique_id=300967811]
+layout_mode = 2
+size_flags_horizontal = 3
+text = "START_WATCH"
+
+[node name="RunButton" type="Button" parent="LiveButtons" unique_id=1927999937]
+layout_mode = 2
+size_flags_horizontal = 3
+text = "RUN_GAME"
+
+[connection signal="pressed" from="LiveBaseRow/LiveBaseBrowseButton" to="." method="_on_dev_base_browse_pressed"]
+[connection signal="pressed" from="LiveProjectRow/LiveProjectBrowseButton" to="." method="_on_dev_project_browse_pressed"]
+[connection signal="pressed" from="LivePatchRow/LivePatchBrowseButton" to="." method="_on_dev_patch_browse_pressed"]
+[connection signal="pressed" from="LiveSandboxRow/LiveSandboxBrowseButton" to="." method="_on_sandbox_browse_pressed"]
+[connection signal="pressed" from="LiveButtons/WatchButton" to="." method="_on_watch_pressed"]
+[connection signal="pressed" from="LiveButtons/RunButton" to="." method="_on_run_button_pressed"]

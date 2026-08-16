@@ -35,12 +35,14 @@ func _on_make_patch_pressed() -> void:
 		output_path += ".gdmod"
 		patch_path_edit.text = output_path
 
-	controller.run_gddelta([
+	var args: Array = [
 		"make",
 		base_path_edit.text,
 		project_path_edit.text,
 		output_path,
-	])
+	]
+	args.append_array(controller.get_base_key_args())
+	controller.run_gddelta(args)
 
 func _on_apply_pressed() -> void:
 	var controller := _controller()
@@ -59,6 +61,7 @@ func _on_apply_pressed() -> void:
 	var output_path := apply_output_path_edit.text.strip_edges()
 	if(!overwrite_checkbox.button_pressed && !output_path.is_empty()):
 		args.append(output_path)
+	args.append_array(controller.get_base_key_args())
 
 	controller.run_gddelta(args)
 
