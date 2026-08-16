@@ -373,7 +373,7 @@ void CliCommands::apply_gdmod(
     std::cout << "[4/4] Finished applying gdmod\n";
 }
 
-void CliCommands::extract_gdmod_to_pck(
+void CliCommands::recover_gdmod_to_pck(
     const std::filesystem::path& base_pck,
     const std::filesystem::path& gdmod_path,
     const std::filesystem::path& output_pck
@@ -384,7 +384,7 @@ void CliCommands::extract_gdmod_to_pck(
     const auto resolved_base = support_.resolve_base_input(base_pck);
 
     std::cout
-    << "Recovering patch PCK from gdmod " << gdmod_path
+    << "Recovering apply-ready patch PCK from gdmod " << gdmod_path
     << " built for " << manifest.base_file_name
     << " (" << manifest.engine_major << "." << manifest.engine_minor << "." << manifest.engine_patch << ")\n";
 

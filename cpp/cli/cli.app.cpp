@@ -101,7 +101,6 @@ void CliApplication::print_usage() {
     << "  Distribution:\n"
     << "  gddelta make <base.pck|base.exe> <project_dir> <output.gdmod|output.pck>\n"
     << "  gddelta apply <base.pck|base.exe> <input.pck|input.gdmod> [sandbox_dir]\n"
-    << "  gddelta extract <base.pck|base.exe> <input.gdmod> <output.pck>\n"
     << "  Global option: [--base-key <64-char-hex>]\n"
     << "\n"
     << "  Development:\n"
@@ -205,12 +204,6 @@ int CliApplication::run_command(std::string_view command, int argc, char **argv)
         return 0;
     }
 
-    if(command == "make-pck") {
-        if(!require_arg_count(argc, 5)) return 1;
-        commands_.build_patch_pck_auto(argv[2], argv[3], argv[4]);
-        return 0;
-    }
-
     if(command == "make") {
         if(!require_arg_count(argc, 5)) return 1;
         const auto output_path = std::filesystem::path(argv[4]);
@@ -255,7 +248,7 @@ int CliApplication::run_command(std::string_view command, int argc, char **argv)
             if(argc >= 5) {
                 const auto output_path = std::filesystem::path(argv[4]);
                 if(output_path.extension() == ".pck") {
-                    commands_.extract_gdmod_to_pck(argv[2], argv[3], output_path);
+                    commands_.recover_gdmod_to_pck(argv[2], argv[3], output_path);
                 }else {
                     commands_.apply_gdmod(argv[2], argv[3], output_path);
                 }
@@ -269,12 +262,6 @@ int CliApplication::run_command(std::string_view command, int argc, char **argv)
                 commands_.apply_pck_in_place(argv[2], argv[3]);
             }
         }
-        return 0;
-    }
-
-    if(command == "extract") {
-        if(!require_arg_count(argc, 5)) return 1;
-        commands_.extract_gdmod_to_pck(argv[2], argv[3], argv[4]);
         return 0;
     }
 

@@ -405,6 +405,7 @@ func _poll_command_thread() -> void:
 
 func _set_command_controls_enabled(enabled: bool) -> void:
 	advanced_toggle.disabled = !enabled
+	base_key_edit.editable = enabled
 	_set_control_tree_enabled(tabs, enabled)
 
 	var tab_bar := tabs.get_tab_bar()

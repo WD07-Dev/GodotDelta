@@ -3,101 +3,87 @@
 GodotDelta is a Godot modding and patching tool for `Godot 3.x` and `Godot 4.x` games.
 
 It is built for workflows where you want to:
-- build a small runtime patch from a Godot project
-- distribute either a `.gdmod` package or a patch `.pck`
-- apply a package to a base game
-- test changes in a sandbox without replacing the original game
+- build a runtime patch from a Godot project
+- distribute either a plain patch `.pck` or a protected `.gdmod`
+- apply a patch to a base game
+- test changes in a sandbox without touching the original game
 - rebuild and retest quickly during development
 
-## What GodotDelta Does
+## What It Supports
 
-Unlike a generic binary delta patcher, GodotDelta works around Godot package structure and mod workflow:
-- reads standalone `.pck` files and embedded game `.exe` files
-- auto-detects changed project files inside a scoped project tree
-- expands runtime-related dependencies for patch creation
-- supports Godot 3.x bytecode patching and Godot 4.x resource patching
-- builds sandbox outputs for testing without touching the original game
-
-## Supported Targets
-
-- Base games: `Godot 3.x` and `Godot 4.x`
-- Inputs:
+- Base game input:
   - standalone `.pck`
   - `.exe` with embedded `.pck`
   - `.exe` with a sibling `.pck` using the same file name stem
+- Engine targets:
+  - `Godot 3.x`
+  - `Godot 4.x`
 
 ## Package Formats
 
-### `gdmod`
-
-`gdmod` is GodotDelta's protected distribution format.
-
-- Created with `gddelta make`
-- Applied with `gddelta apply`
-- Can require the original base game to recover the payload
-- Best for distribution when you do not want to ship a plain patch `.pck`
-
 ### Patch `.pck`
 
-Patch `.pck` is the plain runtime patch format.
+Plain runtime patch format.
 
-- Created with `gddelta make`
-- Applied with `gddelta apply`
-- Best for direct testing, debugging, or use with external loaders such as GodotMods
+- created with `gddelta make`
+- applied with `gddelta apply`
+- best for testing, debugging, or external loaders such as GodotMods
+
+### `.gdmod`
+
+Protected distribution format.
+
+- created with `gddelta make`
+- applied with `gddelta apply`
+- can require the original base game to recover the payload
+- best when you do not want to ship a plain patch `.pck`
 
 ## Main Commands
 
-### Build A `gdmod`
+### Make
 
 ```bash
 gddelta make <base.pck|base.exe> <project_dir> <output.gdmod|output.pck>
 ```
 
-Example:
+Examples:
 
 ```bash
-gddelta make game.exe my_mod_project rom_battle.gdmod
-gddelta make game.exe my_mod_project rom_battle_patch.pck
+gddelta make game.exe my_mod_project mod.gdmod
+gddelta make game.exe my_mod_project mod.pck
 ```
 
-### Apply A Package
+The output extension decides what is created:
+- `.gdmod` -> protected package
+- `.pck` -> plain patch package
 
-Apply directly into the base game:
+### Apply
 
 ```bash
-gddelta apply <base.pck|base.exe> <input.pck|input.gdmod>
+gddelta apply <base.pck|base.exe> <input.pck|input.gdmod> [output]
 ```
 
-Build a patched sandbox instead of overwriting the base:
-
-```bash
-gddelta apply <base.pck|base.exe> <input.pck|input.gdmod> <sandbox_dir>
-```
+Behavior depends on the input and optional output path:
+- no output path:
+  - patch the base game in place
+- input is `.pck` and output is a directory:
+  - build a sandbox there
+- input is `.gdmod` and output is a directory:
+  - recover the patch and build a sandbox there
+- input is `.gdmod` and output is a `.pck` path:
+  - recover a plain patch `.pck`
 
 Examples:
 
 ```bash
-gddelta apply game.exe rom_battle_patch.pck
-gddelta apply game.exe rom_battle.gdmod
-gddelta apply game.exe rom_battle_patch.pck output/dev-runtime
-gddelta apply game.exe rom_battle.gdmod recovered_patch.pck
+gddelta apply game.exe mod.pck
+gddelta apply game.exe mod.gdmod
+gddelta apply game.exe mod.pck output/dev-runtime
+gddelta apply game.exe mod.gdmod output/dev-runtime
+gddelta apply game.exe mod.gdmod recovered_patch.pck
 ```
 
-### Extract A Patch PCK From `gdmod`
-
-Recover a plain patch `.pck` from a protected `gdmod`:
-
-```bash
-gddelta extract <base.pck|base.exe> <input.gdmod> <output.pck>
-```
-
-Example:
-
-```bash
-gddelta extract game.exe rom_battle.gdmod recovered_patch.pck
-```
-
-### Build A Dev Sandbox
+### Dev Build
 
 ```bash
 gddelta dev-build <base.pck|base.exe> <project_dir> <sandbox_dir>
@@ -109,7 +95,9 @@ Example:
 gddelta dev-build game.exe my_mod_project output/live-dev
 ```
 
-### Watch And Rebuild During Development
+This builds a runnable sandbox from the base game and the current project state.
+
+### Watch
 
 ```bash
 gddelta watch-dev-build-patch <base.pck|base.exe> <project_dir> <patch.pck> <sandbox_dir> [interval_ms] [--log-file path]
@@ -126,15 +114,88 @@ This continuously:
 - refreshes the sandbox output
 - keeps a runnable test copy ready
 
-### Other Commands
+## Other Commands
 
 ```bash
 gddelta ui
+gddelta bootstrap
 gddelta inspect <input.pck|input.exe>
 gddelta diff <base_dir> <modified_dir>
 gddelta patch <base_dir> <modified_dir> <output.pck>
 gddelta compose <base.pck|base.exe> <patch.pck|project_dir> <output.pck|output.exe>
 ```
+
+## `.gddeltainclude`
+
+Project-directory commands require a `.gddeltainclude` file in the project root.
+
+That includes commands such as:
+- `make`
+- `dev-build`
+- `watch-dev-build-patch`
+- `watch`
+
+If `.gddeltainclude` is missing, GodotDelta stops with an error instead of scanning the whole project.
+
+### Include Rules
+
+- `path` or `glob`: include
+- `+path` or `+glob`: force include
+- `!path` or `!glob`: exclude
+
+Both forms are accepted:
+- `UI/**`
+- `res://UI/**`
+
+### Path Mapping
+
+You can map a project source path to a different pack path with `=`.
+
+Examples:
+
+```text
+project.godot=game.godot
+res://misc/epilepsy_warning.tscn=res://edit/epilepsy_warning.tscn
+"res://misc/epilepsy_warning.tscn"="res://edit/epilepsy_warning.tscn"
+```
+
+Meaning:
+- left side: path to write inside the patch pack
+- right side: actual source file to read from the project
+
+### Example
+
+```text
+!res://.autoconverted/**
++res://fonts/ko_mono.ttf
++res://misc/epilepsy_warning.tscn
+project.godot=game.godot
+```
+
+Packaged builds also read the default include file named:
+
+```text
+default.gddeltainclude
+```
+
+## Base Encryption Key
+
+Some encrypted games need a base encryption key.
+
+Use:
+
+```bash
+--base-key <64-char-hex>
+```
+
+Examples:
+
+```bash
+gddelta make game.exe my_mod_project mod.gdmod --base-key 0123...
+gddelta dev-build game.exe my_mod_project output/live-dev --base-key 0123...
+```
+
+The GUI also exposes a `Base Key` field on Dev tabs.
 
 ## GUI
 
@@ -155,59 +216,32 @@ The GUI supports:
 - building dev sandboxes
 - watch mode
 
-Recent behavior:
-- GUI command execution runs in the background instead of blocking the window
+Current behavior:
+- command execution runs in the background
+- logs stream into the window while the command runs
 - buttons and inputs are disabled while a command is running
-
-## `.gddeltainclude`
-
-GodotDelta uses `.gddeltainclude` in the project root to limit scanning scope.
-
-Pattern rules:
-- normal path or glob: include
-- `+path`: force include
-- `!path`: exclude
-
-Both forms are accepted:
-- `UI/**`
-- `res://UI/**`
-
-Example:
-
-```text
-project.godot
-Room/**
-Script/**
-+addons/custom_runtime/**
-!addons/unused/**
-```
-
-GodotDelta also reads the packaged default include file at:
-
-```text
-build/default.gddeltainclude
-```
+- the `Base Key` field is only shown on Dev tabs
 
 ## GDRETools Integration
 
 GodotDelta uses [GDRETools](https://github.com/GDRETools/gdsdecomp) where accurate Godot package and bytecode handling matters most.
 
 Current use cases include:
-- project-file based compose
-- Godot 3.x GDScript bytecode compilation
-- GDRE-based patch application paths where raw merge logic is not enough
+- Godot `3.x` GDScript bytecode compilation
+- legacy `3.x` patch application paths
+- pack inspection / recovery paths where engine-specific behavior matters
 
-GDRETools is now prepared lazily:
+GDRETools is prepared lazily:
 - it is not downloaded at startup
 - it is only prepared when a command actually needs it
 
 ## Notes
 
-- `apply` without a sandbox path replaces the base game.
-- `apply` with a sandbox path leaves the original base untouched.
+- `apply` without an output path modifies the base game.
+- `apply` with a sandbox directory leaves the original base untouched.
 - `dev-build` and watch workflows are intended for testing and iteration.
-- For non-embedded `.exe` inputs, GodotDelta will try to use a sibling `.pck` with the same stem.
-- Legacy Godot 3.x patching may use different internal application paths than Godot 4.x because of bytecode handling requirements.
+- for non-embedded `.exe` inputs, GodotDelta tries to use a sibling `.pck` with the same stem
+- legacy Godot `3.x` patching can behave differently from Godot `4.x` because of bytecode and remap handling
 
 ## Credits
 
