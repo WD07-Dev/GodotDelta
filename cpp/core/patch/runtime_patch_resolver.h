@@ -12,6 +12,11 @@
 #include<filesystem>
 #include<unordered_map>
 namespace gddelta::patch {
+    struct ProjectInputPath {
+        std::string source_path;
+        std::string pack_path;
+    };
+
     class RuntimePatchResolver {
         public:
             using IncludeRuleMode = gddelta::common::IncludeRuleMode;
@@ -20,13 +25,17 @@ namespace gddelta::patch {
             explicit RuntimePatchResolver(std::filesystem::path project_dir);
             void warn_if_runtime_is_stale() const;
             [[nodiscard]] std::vector<pck::PckWriteFile> collect_patch_files(
+                const std::vector<ProjectInputPath>& input_paths,
+                bool legacy_simple = false
+            ) const;
+            [[nodiscard]] std::vector<pck::PckWriteFile> collect_patch_files(
                 const std::vector<std::string> &input_paths,
                 bool legacy_simple = false
             ) const;
             [[nodiscard]] std::vector<std::string> collect_auto_input_paths(
                 const pck::PckReader& base_reader
             ) const;
-            [[nodiscard]] std::vector<std::string> collect_included_source_paths() const;
+            [[nodiscard]] std::vector<ProjectInputPath> collect_included_source_paths() const;
             [[nodiscard]] std::uint64_t calculate_watch_stamp() const;
             [[nodiscard]] static bool is_project_source_candidate(const std::filesystem::path& relative_path);
             [[nodiscard]] std::vector<std::string> collect_dirty_input_paths(const workspace::WorkspaceDiff& diff) const;
@@ -44,10 +53,6 @@ namespace gddelta::patch {
             [[nodiscard]] std::optional<TimestampedPath> find_newest_project_source() const;
             [[nodiscard]] std::optional<TimestampedPath> find_newest_export_marker() const;
             [[nodiscard]] static std::vector<IncludeRule> load_include_patterns(const std::filesystem::path& project_dir);
-            [[nodiscard]] static bool matches_include_patterns(
-                const std::string& path,
-                const std::vector<IncludeRule>& patterns
-            );
             [[nodiscard]] static bool matches_forced_include_patterns(
                 const std::string& path,
                 const std::vector<IncludeRule>& patterns

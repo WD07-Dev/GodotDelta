@@ -56,12 +56,23 @@ namespace {
         });
     }
 
-    std::vector<std::string> collect_blind_override_inputs(const std::filesystem::path& project_dir) {
+    std::vector<gddelta::patch::ProjectInputPath> collect_blind_override_inputs(const std::filesystem::path& project_dir) {
         auto input_paths = gddelta::patch::RuntimePatchResolver(project_dir).collect_included_source_paths();
         if(input_paths.empty()) {
             throw std::runtime_error("No included project files were found for blind override patch generation.");
         }
         return input_paths;
+    }
+
+    std::vector<gddelta::patch::ProjectInputPath> to_identity_project_input_paths(
+        const std::vector<std::string>& input_paths
+    ) {
+        std::vector<gddelta::patch::ProjectInputPath> mapped_inputs;
+        mapped_inputs.reserve(input_paths.size());
+        for(const auto& input_path : input_paths) {
+            mapped_inputs.push_back(gddelta::patch::ProjectInputPath { input_path, input_path });
+        }
+        return mapped_inputs;
     }
 }
 
@@ -95,7 +106,7 @@ void CliCommands::build_patch_pck_from_inputs(
     const std::filesystem::path& base_pck,
     const std::filesystem::path& project_dir,
     const std::filesystem::path& output_pck,
-    const std::vector<std::string>& input_paths
+    const std::vector<gddelta::patch::ProjectInputPath>& input_paths
 ) {
     std::cout << "[1/3] Preparing runtime patch files\n";
     const auto options = support_.build_pack_options_from_base(base_pck);
@@ -116,6 +127,15 @@ void CliCommands::build_patch_pck_from_inputs(
     << " with " << prepared.files.size() << " runtime-related entries\n";
 }
 
+void CliCommands::build_patch_pck_from_inputs(
+    const std::filesystem::path& base_pck,
+    const std::filesystem::path& project_dir,
+    const std::filesystem::path& output_pck,
+    const std::vector<std::string>& input_paths
+) {
+    build_patch_pck_from_inputs(base_pck, project_dir, output_pck, to_identity_project_input_paths(input_paths));
+}
+
 void CliCommands::build_patch_pck_auto(
     const std::filesystem::path& base_pck,
     const std::filesystem::path& project_dir,
@@ -123,7 +143,7 @@ void CliCommands::build_patch_pck_auto(
 ) {
     std::cout << "[1/2] Scanning project for changed files\n";
     const auto temp_base = support_.create_temporary_base_copy(base_pck);
-    std::vector<std::string> input_paths;
+    std::vector<gddelta::patch::ProjectInputPath> input_paths;
     try {
         gddelta::pck::PckReader base_reader;
         base_reader.open(temp_base);
@@ -132,7 +152,7 @@ void CliCommands::build_patch_pck_auto(
             std::cout << "Base pack contains encrypted entries. Falling back to blind override scan.\n";
             input_paths = collect_blind_override_inputs(project_dir);
         }else {
-            input_paths = resolver.collect_auto_input_paths(base_reader);
+            input_paths = to_identity_project_input_paths(resolver.collect_auto_input_paths(base_reader));
         }
     } catch(const std::exception& exception) {
         std::cout
@@ -160,14 +180,14 @@ void CliCommands::build_gdmod(
     const auto resolved_base = support_.resolve_base_input(base_pck);
     const auto options = support_.build_pack_options_from_base(base_pck);
     const gddelta::patch::RuntimePatchResolver resolver(project_dir);
-    std::vector<std::string> input_paths;
+    std::vector<gddelta::patch::ProjectInputPath> input_paths;
     try {
         const auto base_reader = support_.open_supported_base_pack(base_pck);
         if(has_encrypted_entries(base_reader)) {
             std::cout << "Base pack contains encrypted entries. Falling back to blind override scan.\n";
             input_paths = collect_blind_override_inputs(project_dir);
         }else {
-            input_paths = resolver.collect_auto_input_paths(base_reader);
+            input_paths = to_identity_project_input_paths(resolver.collect_auto_input_paths(base_reader));
         }
     } catch(const std::exception& exception) {
         std::cout

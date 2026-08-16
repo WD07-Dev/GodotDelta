@@ -4,6 +4,16 @@
 #include<stdexcept>
 using namespace gddelta::common;
 
+namespace {
+    std::string unquote_include_value(std::string value) {
+        value = gddelta::common::trim_copy(value);
+        if(value.size() >= 2 && value.front() == '"' && value.back() == '"') {
+            value = value.substr(1, value.size() - 2);
+        }
+        return gddelta::common::trim_copy(value);
+    }
+}
+
 std::string gddelta::common::trim_copy(const std::string& value) {
     const auto first = value.find_first_not_of(" \t\r\n");
     if(first == std::string::npos) return {};
@@ -76,11 +86,27 @@ std::vector<IncludeRule> gddelta::common::load_include_patterns_from_file(const 
             trimmed = trim_copy(trimmed);
         }
 
-        const auto normalized = normalize_pack_relative_path(trimmed);
+        std::optional<std::string> mapped_pack_path;
+        auto source_pattern = trimmed;
+        if(mode != IncludeRuleMode::Exclude) {
+            const auto separator = trimmed.find('=');
+            if(separator != std::string::npos) {
+                auto mapped_target = unquote_include_value(trimmed.substr(0, separator));
+                source_pattern = unquote_include_value(trimmed.substr(separator + 1));
+                const auto normalized_target = normalize_pack_relative_path(mapped_target);
+                if(!normalized_target.empty()) {
+                    mapped_pack_path = normalized_target;
+                }
+            }
+        }
+
+        source_pattern = unquote_include_value(source_pattern);
+        const auto normalized = normalize_pack_relative_path(source_pattern);
         if(normalized.empty()) continue;
         patterns.push_back(IncludeRule {
             compile_include_pattern(normalized),
-            mode
+            mode,
+            mapped_pack_path
         });
     }
     return patterns;

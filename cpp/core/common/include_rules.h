@@ -1,6 +1,7 @@
 #pragma once
 
 #include<filesystem>
+#include<optional>
 #include<regex>
 #include<string>
 #include<vector>
@@ -14,6 +15,7 @@ namespace gddelta::common {
     struct IncludeRule {
         std::regex pattern;
         IncludeRuleMode mode = IncludeRuleMode::Include;
+        std::optional<std::string> mapped_pack_path;
     };
 
     [[nodiscard]] std::string trim_copy(const std::string& value);

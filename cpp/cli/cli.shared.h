@@ -1,5 +1,6 @@
 #pragma once
 
+#include "core/patch/runtime_patch_resolver.h"
 #include "core/pck/pck_format.h"
 #include "core/pck/pck_reader.h"
 #include "core/pck/pck_writer.h"
@@ -76,11 +77,13 @@ namespace cli_internal {
             ) const;
             [[nodiscard]] std::filesystem::path convert_project_config_to_binary(
                 const std::filesystem::path& source_file,
-                const std::filesystem::path& output_dir
+                const std::filesystem::path& output_dir,
+                std::string_view cache_discriminator = {}
             ) const;
             [[nodiscard]] std::filesystem::path convert_text_resource_to_binary(
                 const std::filesystem::path& source_file,
-                const std::filesystem::path& output_dir
+                const std::filesystem::path& output_dir,
+                std::string_view cache_discriminator = {}
             ) const;
             void compose_pck_from_project_files(
                 const std::filesystem::path& base_pck,
@@ -90,8 +93,20 @@ namespace cli_internal {
             [[nodiscard]] std::vector<gddelta::pck::PckWriteFile> collect_runtime_patch_files(
                 const std::filesystem::path& base_pck,
                 const std::filesystem::path& project_dir,
+                const std::vector<gddelta::patch::ProjectInputPath>& input_paths,
+                bool legacy_simple = false
+            ) const;
+            [[nodiscard]] std::vector<gddelta::pck::PckWriteFile> collect_runtime_patch_files(
+                const std::filesystem::path& base_pck,
+                const std::filesystem::path& project_dir,
                 const std::vector<std::string>& input_paths,
                 bool legacy_simple = false
+            ) const;
+            [[nodiscard]] PreparedRuntimePatchFiles prepare_runtime_patch_files(
+                const std::filesystem::path& base_pck,
+                const std::filesystem::path& project_dir,
+                const std::vector<gddelta::patch::ProjectInputPath>& input_paths,
+                bool compile_for_write
             ) const;
             [[nodiscard]] PreparedRuntimePatchFiles prepare_runtime_patch_files(
                 const std::filesystem::path& base_pck,
@@ -108,7 +123,7 @@ namespace cli_internal {
                 const std::filesystem::path& base_pck,
                 std::vector<gddelta::pck::PckWriteFile>& files
             ) const;
-            [[nodiscard]] std::vector<std::string> collect_project_source_inputs(
+            [[nodiscard]] std::vector<gddelta::patch::ProjectInputPath> collect_project_source_inputs(
                 const std::filesystem::path& project_dir,
                 bool legacy_full_scan = false
             ) const;
@@ -143,6 +158,10 @@ namespace cli_internal {
             void print_rebuild_paths(
                 const std::string& label,
                 const std::vector<std::string>& paths
+            ) const;
+            void print_rebuild_paths(
+                const std::string& label,
+                const std::vector<gddelta::patch::ProjectInputPath>& paths
             ) const;
     };
 }

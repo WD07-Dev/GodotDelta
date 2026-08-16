@@ -97,6 +97,29 @@ std::string quote_argument(const std::string& value) {
     return result;
 }
 
+std::filesystem::path derive_project_root_from_source(
+    const std::filesystem::path& source_path,
+    std::string_view pack_path
+) {
+    auto project_root = source_path;
+    for(const auto& component : std::filesystem::path(std::string(pack_path))) {
+        static_cast<void>(component);
+        project_root = project_root.parent_path();
+    }
+    return project_root;
+}
+
+std::vector<gddelta::patch::ProjectInputPath> to_identity_project_input_paths(
+    const std::vector<std::string>& input_paths
+) {
+    std::vector<gddelta::patch::ProjectInputPath> mapped_inputs;
+    mapped_inputs.reserve(input_paths.size());
+    for(const auto& input_path : input_paths) {
+        mapped_inputs.push_back(gddelta::patch::ProjectInputPath { input_path, input_path });
+    }
+    return mapped_inputs;
+}
+
 #ifdef _WIN32
 std::wstring widen_native_string(const std::string& value) {
     if(value.empty()) return {};
@@ -234,6 +257,17 @@ bool has_virtual_extension(std::string_view path, std::string_view extension) {
     && path.compare(path.size() - extension.size(), extension.size(), extension) == 0;
 }
 
+std::string build_conversion_cache_key(
+    const std::filesystem::path& source_file,
+    std::string_view cache_prefix,
+    std::string_view cache_discriminator
+) {
+    return cache_key_for_file(
+        source_file,
+        std::string(cache_prefix) + "|" + std::string(cache_discriminator)
+    );
+}
+
 bool is_text_resource_extension(std::string_view extension) {
     return extension == ".tscn"
     || extension == ".tres"
@@ -254,6 +288,97 @@ std::string replace_virtual_extension(std::string path, std::string_view extensi
     path.erase(dot_pos);
     path += extension;
     return path;
+}
+
+bool is_preferred_text_resource_binary_output(
+    const std::filesystem::path& source_file,
+    const std::filesystem::path& candidate
+) {
+    const auto source_name = path_to_utf8(source_file.filename());
+    const auto candidate_name = path_to_utf8(candidate.filename());
+    const auto candidate_extension = to_lower_copy(path_to_utf8(candidate.extension()));
+
+    if(candidate_name == source_name + ".converted.res") return true;
+    if(candidate_name == source_name + ".converted.scn") return true;
+
+    const auto source_extension = to_lower_copy(path_to_utf8(source_file.extension()));
+    if(source_extension == ".tscn" && candidate_extension == ".scn") return true;
+    if(source_extension == ".tres" && candidate_extension == ".res") return true;
+    if(source_extension == ".godot" && candidate_extension == ".binary") return true;
+
+    return false;
+}
+
+bool is_binary_text_resource_pack_path(std::string_view path) {
+    return has_virtual_extension(path, ".converted.res")
+        || has_virtual_extension(path, ".converted.scn")
+        || has_virtual_extension(path, ".res")
+        || has_virtual_extension(path, ".scn")
+        || has_virtual_extension(path, ".gdc");
+}
+
+std::filesystem::path select_best_text_resource_binary_output(
+    const std::filesystem::path& source_file,
+    const std::vector<std::filesystem::path>& outputs
+) {
+    if(outputs.empty()) {
+        return {};
+    }
+
+    for(const auto& output : outputs) {
+        if(is_preferred_text_resource_binary_output(source_file, output)) {
+            return output;
+        }
+    }
+
+    return *std::max_element(outputs.begin(), outputs.end(), [](const auto& left, const auto& right) {
+        std::error_code left_ec;
+        std::error_code right_ec;
+        const auto left_size = std::filesystem::file_size(left, left_ec);
+        const auto right_size = std::filesystem::file_size(right, right_ec);
+        if(left_ec || right_ec) {
+            return path_to_utf8(left.filename()) < path_to_utf8(right.filename());
+        }
+        if(left_size != right_size) {
+            return left_size < right_size;
+        }
+        return path_to_utf8(left.filename()) < path_to_utf8(right.filename());
+    });
+}
+
+std::optional<std::filesystem::path> find_text_pack_source_path(
+    const std::unordered_map<std::string, std::filesystem::path>& text_pack_sources,
+    std::string_view pack_path
+) {
+    if(const auto it = text_pack_sources.find(std::string(pack_path)); it != text_pack_sources.end()) {
+        return it->second;
+    }
+    return std::nullopt;
+}
+
+bool is_binary_remap_target(const std::optional<std::string>& remap_target) {
+    if(!remap_target.has_value()) {
+        return false;
+    }
+    return is_binary_text_resource_pack_path(*remap_target);
+}
+
+void upsert_pack_file_source(
+    std::vector<gddelta::pck::PckWriteFile>& files,
+    std::string_view pack_path,
+    const std::filesystem::path& source_path
+) {
+    for(auto& file : files) {
+        if(file.removal || file.pack_path != pack_path) continue;
+        file.source_path = source_path;
+        return;
+    }
+
+    gddelta::pck::PckWriteFile added_file;
+    added_file.pack_path = std::string(pack_path);
+    added_file.source_path = source_path;
+    added_file.removal = false;
+    files.push_back(std::move(added_file));
 }
 
 std::vector<std::string> collect_all_project_source_inputs(const std::filesystem::path& project_dir) {
@@ -346,6 +471,20 @@ std::optional<std::string> read_remap_target_pack_path_from_entry(
         reinterpret_cast<const char*>(bytes.data()),
         bytes.size()
     ));
+}
+
+std::optional<std::string> resolve_remap_target_pack_path(
+    const gddelta::pck::PckReader& reader,
+    const std::filesystem::path& project_dir,
+    std::string_view input_path
+) {
+    const auto remap_pack_path = std::string(input_path) + ".remap";
+    const auto local_remap_path = project_dir / gddelta::common::path_from_utf8(remap_pack_path);
+    if(const auto local_target = read_remap_target_pack_path(local_remap_path); local_target.has_value()) {
+        return local_target;
+    }
+
+    return read_remap_target_pack_path_from_entry(reader, remap_pack_path);
 }
 
 std::size_t gdre_command_length_limit() {
@@ -1170,12 +1309,16 @@ CompiledGDScriptOutputs CliSupport::compile_gdscript_files(
         compile_batches.push_back(std::move(unique_name_batch));
     }
 
+    std::size_t compile_count = 0;
+    for(const auto& batch : compile_batches) {
+        compile_count += batch.size();
+    }
+
     std::cout
     << "Prepared " << compile_batches.size()
     << " compile batch(es)\n";
-    if(reused_count > 0) {
-        std::cout << "Reused " << reused_count << " cached GDScript output(s)\n";
-    }
+    std::cout << "Reused " << reused_count << " cached GDScript output(s)\n";
+    std::cout << "Compiling " << compile_count << " new GDScript output(s)\n";
 
     std::size_t batch_index = 0;
     for(const auto& batch : compile_batches) {
@@ -1251,12 +1394,17 @@ CompiledGDScriptOutputs CliSupport::compile_gdscript_files(
 
 std::filesystem::path CliSupport::convert_project_config_to_binary(
     const std::filesystem::path& source_file,
-    const std::filesystem::path& output_dir
+    const std::filesystem::path& output_dir,
+    std::string_view cache_discriminator
 ) const {
     const auto source_extension = to_lower_copy(path_to_utf8(source_file.extension()));
     const auto output_file_name = source_extension == ".godot"
     ? (path_to_utf8(source_file.stem()) + ".binary") : (path_to_utf8(source_file.stem()) + ".cfb");
-    const auto cache_key = cache_key_for_file(source_file, "project-config-cache-v1");
+    const auto cache_key = build_conversion_cache_key(
+        source_file,
+        "project-config-cache-v1",
+        cache_discriminator
+    );
     auto cached_output_path = resolve_cache_directory() / "text_resource" / cache_key / output_file_name;
     if(std::filesystem::exists(cached_output_path)) {
         return cached_output_path;
@@ -1287,9 +1435,14 @@ std::filesystem::path CliSupport::convert_project_config_to_binary(
 
 std::filesystem::path CliSupport::convert_text_resource_to_binary(
     const std::filesystem::path& source_file,
-    const std::filesystem::path& output_dir
+    const std::filesystem::path& output_dir,
+    std::string_view cache_discriminator
 ) const {
-    const auto cache_key = cache_key_for_file(source_file, "text-resource-cache-v1");
+    const auto cache_key = build_conversion_cache_key(
+        source_file,
+        "text-resource-cache-v1",
+        cache_discriminator
+    );
     const auto cache_dir = resolve_cache_directory() / "text_resource" / cache_key;
     if(std::filesystem::exists(cache_dir)) {
         for(const auto& entry : std::filesystem::directory_iterator(cache_dir)) {
@@ -1319,11 +1472,12 @@ std::filesystem::path CliSupport::convert_text_resource_to_binary(
     }
 
     std::sort(outputs.begin(), outputs.end());
+    const auto selected_output = select_best_text_resource_binary_output(source_file, outputs);
     std::error_code ec;
     std::filesystem::create_directories(cache_dir, ec);
-    const auto cached_output_path = cache_dir / outputs.front().filename();
-    std::filesystem::copy_file(outputs.front(), cached_output_path, std::filesystem::copy_options::overwrite_existing, ec);
-    return ec ? outputs.front() : cached_output_path;
+    const auto cached_output_path = cache_dir / selected_output.filename();
+    std::filesystem::copy_file(selected_output, cached_output_path, std::filesystem::copy_options::overwrite_existing, ec);
+    return ec ? selected_output : cached_output_path;
 }
 
 void CliSupport::compose_pck_from_project_files(
@@ -1370,11 +1524,16 @@ void CliSupport::compose_pck_from_project_files(
     const auto compile_result = compile_gdscript_files(base_pck, gd_files, compiled_dir);
     const auto& compiled_gd_outputs = compile_result.outputs;
     const auto is_godot3 = base_reader.header().engine_major < 4;
+    const auto cache_discriminator = detect_base_engine_version(base_pck);
 
     std::vector<std::string> patch_args;
     for(const auto& file : files) {
         if(file.pack_path == "project.godot") {
-            const auto converted_config = convert_project_config_to_binary(file.source_path, compiled_dir / "project_config");
+            const auto converted_config = convert_project_config_to_binary(
+                file.source_path,
+                compiled_dir / "project_config",
+                cache_discriminator
+            );
             patch_args.push_back("--patch-file=" + path_to_utf8(converted_config) + "=res://project.binary");
             continue;
         }
@@ -1471,6 +1630,21 @@ void CliSupport::compose_pck_from_project_files(
 std::vector<gddelta::pck::PckWriteFile> CliSupport::collect_runtime_patch_files(
     const std::filesystem::path& base_pck,
     const std::filesystem::path& project_dir,
+    const std::vector<gddelta::patch::ProjectInputPath>& input_paths,
+    bool legacy_simple
+) const {
+    const auto options = build_pack_options_from_base(base_pck);
+    const gddelta::patch::RuntimePatchResolver resolver(project_dir);
+    auto files = resolver.collect_patch_files(input_paths, legacy_simple);
+    if(!legacy_simple) {
+        normalize_runtime_patch_files(files, options);
+    }
+    return files;
+}
+
+std::vector<gddelta::pck::PckWriteFile> CliSupport::collect_runtime_patch_files(
+    const std::filesystem::path& base_pck,
+    const std::filesystem::path& project_dir,
     const std::vector<std::string>& input_paths,
     bool legacy_simple
 ) const {
@@ -1494,6 +1668,58 @@ void CliSupport::normalize_runtime_patch_files_for_base(
 PreparedRuntimePatchFiles CliSupport::prepare_runtime_patch_files(
     const std::filesystem::path& base_pck,
     const std::filesystem::path& project_dir,
+    const std::vector<gddelta::patch::ProjectInputPath>& input_paths,
+    bool compile_for_write
+) const {
+    PreparedRuntimePatchFiles prepared;
+    const auto options = build_pack_options_from_base(base_pck);
+    const gddelta::patch::RuntimePatchResolver resolver(project_dir);
+    const auto base_reader = open_supported_base_pack(base_pck);
+    std::cout << "[prepare] Collecting patch files from " << input_paths.size() << " input(s)\n";
+
+    std::unordered_set<std::string> seen_pack_paths;
+    const auto add_unique_file = [&](gddelta::pck::PckWriteFile file) {
+        if(file.pack_path.empty() || seen_pack_paths.contains(file.pack_path)) return;
+        seen_pack_paths.insert(file.pack_path);
+        prepared.files.push_back(std::move(file));
+    };
+
+    for(const auto& input_path : input_paths) {
+        const auto remap_pack_path = input_path.pack_path + ".remap";
+        const auto remap_target = resolve_remap_target_pack_path(base_reader, project_dir, input_path.source_path);
+        if(remap_target.has_value() && is_binary_text_resource_pack_path(*remap_target)) {
+            gddelta::pck::PckWriteFile converted_file;
+            converted_file.pack_path = *remap_target;
+            converted_file.source_path = project_dir / gddelta::common::path_from_utf8(input_path.source_path);
+            converted_file.removal = !std::filesystem::exists(converted_file.source_path);
+            add_unique_file(std::move(converted_file));
+
+            const auto local_remap_path = project_dir / gddelta::common::path_from_utf8(input_path.source_path + ".remap");
+            if(std::filesystem::exists(local_remap_path)) {
+                gddelta::pck::PckWriteFile remap_file;
+                remap_file.pack_path = remap_pack_path;
+                remap_file.source_path = local_remap_path;
+                add_unique_file(std::move(remap_file));
+            }
+            continue;
+        }
+
+        for(auto& file : resolver.collect_patch_files({input_path})) {
+            add_unique_file(std::move(file));
+        }
+    }
+
+    if(compile_for_write) {
+        std::cout << "[prepare] Preparing files for write/compile\n";
+        prepared.temp_dir = prepare_runtime_patch_files_for_write(base_pck, prepared.files);
+    }
+    normalize_runtime_patch_files(prepared.files, options);
+    return prepared;
+}
+
+PreparedRuntimePatchFiles CliSupport::prepare_runtime_patch_files(
+    const std::filesystem::path& base_pck,
+    const std::filesystem::path& project_dir,
     const std::vector<std::string>& input_paths,
     bool compile_for_write
 ) const {
@@ -1512,8 +1738,8 @@ PreparedRuntimePatchFiles CliSupport::prepare_runtime_patch_files(
 
     for(const auto& input_path : input_paths) {
         const auto remap_pack_path = input_path + ".remap";
-        const auto remap_target = read_remap_target_pack_path_from_entry(base_reader, remap_pack_path);
-        if(remap_target.has_value() && has_virtual_extension(*remap_target, ".converted.res")) {
+        const auto remap_target = resolve_remap_target_pack_path(base_reader, project_dir, input_path);
+        if(remap_target.has_value() && is_binary_text_resource_pack_path(*remap_target)) {
             gddelta::pck::PckWriteFile converted_file;
             converted_file.pack_path = *remap_target;
             converted_file.source_path = project_dir / gddelta::common::path_from_utf8(input_path);
@@ -1550,6 +1776,8 @@ std::filesystem::path CliSupport::prepare_runtime_patch_files_for_write(
 ) const {
     const auto pack_options = build_pack_options_from_base(base_pck);
     const auto is_godot3 = pack_options.engine_major < 4;
+    const auto cache_discriminator = detect_base_engine_version(base_pck);
+    std::optional<gddelta::pck::PckReader> legacy_base_reader;
     std::vector<std::filesystem::path> gd_files;
     std::unordered_map<std::string, std::filesystem::path> gd_pack_sources;
     std::unordered_map<std::string, std::filesystem::path> text_pack_sources;
@@ -1630,61 +1858,79 @@ std::filesystem::path CliSupport::prepare_runtime_patch_files_for_write(
     for(auto& file : files) {
         if(file.removal || file.pack_path != "project.godot") continue;
 
-        const auto converted_config = convert_project_config_to_binary(file.source_path, temp_root / "project_config");
+        const auto converted_config = convert_project_config_to_binary(
+            file.source_path,
+            temp_root / "project_config",
+            cache_discriminator
+        );
         file.pack_path = "project.binary";
         file.source_path = converted_config;
     }
 
+    std::unordered_map<std::string, std::string> resolved_remap_targets;
+    for(const auto& [source_pack_path, remap_source_path] : remap_pack_sources) {
+        const auto remap_target = read_remap_target_pack_path(remap_source_path);
+        if(!is_binary_remap_target(remap_target)) continue;
+        resolved_remap_targets[source_pack_path] = *remap_target;
+    }
+
+    if(legacy_simple) {
+        legacy_base_reader = open_supported_base_pack(base_pck);
+        for(const auto& [source_pack_path, source_text_path] : text_pack_sources) {
+            if(resolved_remap_targets.contains(source_pack_path)) continue;
+
+            const auto project_root = derive_project_root_from_source(source_text_path, source_pack_path);
+            const auto remap_target = resolve_remap_target_pack_path(*legacy_base_reader, project_root, source_pack_path);
+            if(!is_binary_remap_target(remap_target)) continue;
+            resolved_remap_targets[source_pack_path] = *remap_target;
+        }
+    }
+
+    std::unordered_set<std::string> converted_remap_sources;
+    for(const auto& [source_pack_path, remap_target] : resolved_remap_targets) {
+        const auto source_text_path = find_text_pack_source_path(text_pack_sources, source_pack_path);
+        if(!source_text_path.has_value() || !std::filesystem::exists(*source_text_path)) continue;
+
+        const auto output_dir = temp_root / "converted_resources" / std::to_string(std::hash<std::string>{}(remap_target));
+        const auto converted_source_path = convert_text_resource_to_binary(
+            *source_text_path,
+            output_dir,
+            cache_discriminator
+        );
+        upsert_pack_file_source(files, remap_target, converted_source_path);
+
+        converted_remap_sources.insert(source_pack_path);
+    }
+
     if(!legacy_simple) {
-        for(const auto& [source_pack_path, remap_source_path] : remap_pack_sources) {
-            const auto remap_target = read_remap_target_pack_path(remap_source_path);
-            if(!remap_target.has_value() || !has_virtual_extension(*remap_target, ".converted.res")) continue;
-
-            auto source_text_path = remap_source_path;
-            source_text_path.replace_extension("");
-            const auto source_it = text_pack_sources.find(source_pack_path);
-            if(source_it != text_pack_sources.end()) {
-                source_text_path = source_it->second;
-            }
-            if(!std::filesystem::exists(source_text_path)) continue;
-
-            for(auto& file : files) {
-                if(file.removal || file.pack_path != *remap_target) continue;
-
-                const auto output_dir = temp_root / "converted_resources" / std::to_string(std::hash<std::string>{}(file.pack_path));
-                file.source_path = convert_text_resource_to_binary(source_text_path, output_dir);
-                break;
-            }
-        }
-
-        for(auto& file : files) {
-            if(file.removal || !has_virtual_extension(file.pack_path, ".converted.res")) continue;
-            if(!is_text_resource_extension(path_to_utf8(file.source_path.extension()))) continue;
-
-            const auto output_dir = temp_root / "converted_resources" / std::to_string(std::hash<std::string>{}(file.pack_path));
-            file.source_path = convert_text_resource_to_binary(file.source_path, output_dir);
-        }
-
         files.erase(
             std::remove_if(files.begin(), files.end(), [&](const gddelta::pck::PckWriteFile& file) {
                 if(file.removal) return false;
-                return remap_pack_sources.contains(file.pack_path);
+                return converted_remap_sources.contains(file.pack_path);
             }),
             files.end()
         );
+
+        for(auto& file : files) {
+            if(file.removal || !is_binary_text_resource_pack_path(file.pack_path)) continue;
+            if(!is_text_resource_extension(path_to_utf8(file.source_path.extension()))) continue;
+
+            const auto output_dir = temp_root / "converted_resources" / std::to_string(std::hash<std::string>{}(file.pack_path));
+            file.source_path = convert_text_resource_to_binary(
+                file.source_path,
+                output_dir,
+                cache_discriminator
+            );
+        }
     }
 
     return temp_root;
 }
 
-std::vector<std::string> CliSupport::collect_project_source_inputs(
+std::vector<gddelta::patch::ProjectInputPath> CliSupport::collect_project_source_inputs(
     const std::filesystem::path& project_dir,
     bool legacy_full_scan
 ) const {
-    if(legacy_full_scan) {
-        return collect_all_project_source_inputs(project_dir);
-    }
-
     const gddelta::patch::RuntimePatchResolver resolver(project_dir);
     return resolver.collect_included_source_paths();
 }
@@ -1872,6 +2118,27 @@ void CliSupport::print_rebuild_paths(
     const auto visible_count = std::min(paths.size(), max_lines);
     for(std::size_t i = 0; i < visible_count; ++i) {
         std::cout << "  - " << paths[i] << "\n";
+    }
+
+    if(paths.size() > max_lines) {
+        std::cout << "  ... and " << (paths.size() - max_lines) << " more\n";
+    }
+}
+
+void CliSupport::print_rebuild_paths(
+    const std::string& label,
+    const std::vector<gddelta::patch::ProjectInputPath>& paths
+) const {
+    std::cout << label << " (" << paths.size() << ")\n";
+
+    constexpr std::size_t max_lines = 8;
+    const auto visible_count = std::min(paths.size(), max_lines);
+    for(std::size_t i = 0; i < visible_count; ++i) {
+        if(paths[i].source_path == paths[i].pack_path) {
+            std::cout << "  - " << paths[i].source_path << "\n";
+        }else {
+            std::cout << "  - " << paths[i].pack_path << " <- " << paths[i].source_path << "\n";
+        }
     }
 
     if(paths.size() > max_lines) {

@@ -14,7 +14,6 @@ using namespace gddelta::pck;
 namespace {
     inline constexpr const char *kProjectIncludeFileName = ".gddeltainclude";
     inline constexpr const char *kDefaultIncludeFileName = "default.gddeltainclude";
-    inline constexpr const char *kDefaultIncludeFilePath = "build/default.gddeltainclude";
 
     struct PendingEntry {
         std::filesystem::path source_path;
@@ -64,9 +63,6 @@ namespace {
     std::vector<gddelta::common::IncludeRule> load_include_patterns(const std::filesystem::path &root) {
         const auto current_dir = std::filesystem::current_path();
         auto default_patterns = gddelta::common::load_include_patterns_from_file(current_dir / kDefaultIncludeFileName);
-        if(default_patterns.empty()) {
-            default_patterns = gddelta::common::load_include_patterns_from_file(current_dir / kDefaultIncludeFilePath);
-        }
         auto patterns = std::move(default_patterns);
         const auto project_patterns = gddelta::common::load_include_patterns_from_file(root / kProjectIncludeFileName);
         patterns.insert(patterns.end(), project_patterns.begin(), project_patterns.end());

@@ -1,5 +1,6 @@
 #pragma once
 
+#include "core/patch/runtime_patch_resolver.h"
 #include<cstdint>
 #include<filesystem>
 #include<optional>
@@ -32,6 +33,12 @@ class CliCommands {
         void trace_runtime_paths(
             const std::filesystem::path& project_dir,
             const std::vector<std::string>& input_paths
+        );
+        void build_patch_pck_from_inputs(
+            const std::filesystem::path& base_pck,
+            const std::filesystem::path& project_dir,
+            const std::filesystem::path& output_pck,
+            const std::vector<gddelta::patch::ProjectInputPath>& input_paths
         );
         void build_patch_pck_from_inputs(
             const std::filesystem::path& base_pck,

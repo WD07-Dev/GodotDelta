@@ -16,7 +16,7 @@ using namespace gddelta::patch;
 
 namespace {
     inline constexpr const char *kProjectIncludeFileName = ".gddeltainclude";
-    inline constexpr const char *kDefaultIncludeFilePath = "build/default.gddeltainclude";
+    inline constexpr const char *kDefaultIncludeFileName = "default.gddeltainclude";
 
     bool has_virtual_extension(std::string_view path, std::string_view extension) {
         return path.size() >= extension.size()
@@ -44,6 +44,11 @@ namespace {
         || has_virtual_extension(path, ".json")
         || has_virtual_extension(path, ".cfg")
         || has_virtual_extension(path, ".txt");
+    }
+
+    ProjectInputPath make_identity_input_path(const std::string& path) {
+        const auto normalized = gddelta::common::normalize_pack_relative_path(path);
+        return ProjectInputPath { normalized, normalized };
     }
 }
 
@@ -86,127 +91,132 @@ void RuntimePatchResolver::warn_if_runtime_is_stale() const {
 }
 
 std::vector<gddelta::pck::PckWriteFile> RuntimePatchResolver::collect_patch_files(
-    const std::vector<std::string>& input_paths,
+    const std::vector<ProjectInputPath>& input_paths,
     bool legacy_simple
 ) const {
     std::vector<pck::PckWriteFile> files;
-    std::queue<std::string> pending_inputs;
+    std::queue<ProjectInputPath> pending_inputs;
     std::unordered_set<std::string> seen_inputs;
     std::unordered_set<std::string> seen_paths;
 
-    const auto add_file = [&](const std::string &relative_path) {
-        const auto normalized = normalize_project_relative_path(relative_path);
-        if(normalized.empty() || seen_paths.contains(normalized)) return;
-        seen_paths.insert(normalized);
+    const auto add_file = [&](std::string_view pack_path, std::string_view source_path) {
+        const auto normalized_pack_path = normalize_project_relative_path(std::string(pack_path));
+        const auto normalized_source_path = normalize_project_relative_path(std::string(source_path));
+        if(normalized_pack_path.empty() || normalized_source_path.empty() || seen_paths.contains(normalized_pack_path)) return;
+        seen_paths.insert(normalized_pack_path);
 
         pck::PckWriteFile file;
-        file.pack_path = normalized;
-        file.source_path = project_dir_ / gddelta::common::path_from_utf8(normalized);
+        file.pack_path = normalized_pack_path;
+        file.source_path = project_dir_ / gddelta::common::path_from_utf8(normalized_source_path);
         file.removal = !std::filesystem::exists(file.source_path);
         files.push_back(std::move(file));
     };
 
-    const auto add_existing_file = [&](const std::string& relative_path, const std::filesystem::path& source_path) {
-        const auto normalized = normalize_project_relative_path(relative_path);
-        if(normalized.empty() || seen_paths.contains(normalized) || !std::filesystem::exists(source_path)) return;
-        seen_paths.insert(normalized);
+    const auto add_existing_file = [&](std::string_view pack_path, const std::filesystem::path& source_path) {
+        const auto normalized_pack_path = normalize_project_relative_path(std::string(pack_path));
+        if(normalized_pack_path.empty() || seen_paths.contains(normalized_pack_path) || !std::filesystem::exists(source_path)) return;
+        seen_paths.insert(normalized_pack_path);
 
         pck::PckWriteFile file;
-        file.pack_path = normalized;
+        file.pack_path = normalized_pack_path;
         file.source_path = source_path;
         file.removal = false;
         files.push_back(std::move(file));
     };
 
-    const auto add_optional_file = [&](const std::string& relative_path) {
-        const auto normalized = normalize_project_relative_path(relative_path);
-        if(normalized.empty()) return;
-        add_existing_file(normalized, project_dir_ / gddelta::common::path_from_utf8(normalized));
+    const auto add_optional_file = [&](std::string_view pack_path, std::string_view source_path) {
+        const auto normalized_source_path = normalize_project_relative_path(std::string(source_path));
+        if(normalized_source_path.empty()) return;
+        add_existing_file(pack_path, project_dir_ / gddelta::common::path_from_utf8(normalized_source_path));
     };
 
     for(const auto& input_path : input_paths) {
-        const auto normalized = normalize_project_relative_path(input_path);
-        if(!normalized.empty() && seen_inputs.insert(normalized).second) {
-            pending_inputs.push(normalized);
+        const auto normalized_source_path = normalize_project_relative_path(input_path.source_path);
+        const auto normalized_pack_path = normalize_project_relative_path(input_path.pack_path);
+        if(normalized_source_path.empty() || normalized_pack_path.empty()) continue;
+        if(seen_inputs.insert(normalized_source_path).second) {
+            pending_inputs.push(ProjectInputPath { normalized_source_path, normalized_pack_path });
         }
     }
 
     while(!pending_inputs.empty()) {
-        const auto normalized = pending_inputs.front();
+        const auto input = pending_inputs.front();
         pending_inputs.pop();
 
         if(legacy_simple) {
-            add_file(normalized);
+            add_file(input.pack_path, input.source_path);
 
-            const auto full_path = project_dir_ / gddelta::common::path_from_utf8(normalized);
+            const auto full_path = project_dir_ / gddelta::common::path_from_utf8(input.source_path);
             const auto extension = gddelta::common::path_to_utf8(full_path.extension());
             if(extension == ".gd") {
-                const auto gdc_path = replace_virtual_extension(normalized, ".gdc");
-                const auto autoconverted_gdc = project_dir_ / ".autoconverted" / gddelta::common::path_from_utf8(gdc_path);
+                const auto gdc_pack_path = replace_virtual_extension(input.pack_path, ".gdc");
+                const auto gdc_source_path = replace_virtual_extension(input.source_path, ".gdc");
+                const auto autoconverted_gdc = project_dir_ / ".autoconverted" / gddelta::common::path_from_utf8(gdc_source_path);
                 if(std::filesystem::exists(autoconverted_gdc)) {
-                    add_existing_file(gdc_path, autoconverted_gdc);
+                    add_existing_file(gdc_pack_path, autoconverted_gdc);
                 }else {
-                    add_optional_file(gdc_path);
+                    add_optional_file(gdc_pack_path, gdc_source_path);
                 }
             }
 
-            add_optional_file(normalized + ".remap");
-            add_optional_file(normalized + ".uid");
-            add_optional_file(normalized + ".import");
-            for(const auto& import_output : collect_import_outputs(normalized)) {
-                add_optional_file(import_output);
+            add_optional_file(input.pack_path + ".remap", input.source_path + ".remap");
+            add_optional_file(input.pack_path + ".uid", input.source_path + ".uid");
+            add_optional_file(input.pack_path + ".import", input.source_path + ".import");
+            for(const auto& import_output : collect_import_outputs(input.source_path)) {
+                add_optional_file(import_output, import_output);
             }
 
-            const auto export_it = export_map_.find(normalized);
+            const auto export_it = export_map_.find(input.source_path);
             if(export_it != export_map_.end()) {
-                add_optional_file(export_it->second);
+                add_optional_file(export_it->second, export_it->second);
             }
 
-            for(const auto& reference : collect_text_resource_references(normalized)) {
+            for(const auto& reference : collect_text_resource_references(input.source_path)) {
                 if(seen_inputs.insert(reference).second) {
-                    pending_inputs.push(reference);
+                    pending_inputs.push(ProjectInputPath { reference, reference });
                 }
             }
             continue;
         }
 
-        const auto full_path = project_dir_ / gddelta::common::path_from_utf8(normalized);
+        const auto full_path = project_dir_ / gddelta::common::path_from_utf8(input.source_path);
         const auto extension = gddelta::common::path_to_utf8(full_path.extension());
-        const auto remap_outputs = collect_remap_outputs(normalized);
-        const auto export_it = export_map_.find(normalized);
+        const auto remap_outputs = collect_remap_outputs(input.source_path);
+        const auto export_it = export_map_.find(input.source_path);
         const auto has_remap = std::filesystem::exists(
-            project_dir_ / gddelta::common::path_from_utf8(normalized + ".remap")
+            project_dir_ / gddelta::common::path_from_utf8(input.source_path + ".remap")
         ) || !remap_outputs.empty()
         || (export_it != export_map_.end() && has_virtual_extension(export_it->second, ".converted.res"));
-        if(!has_remap) add_file(normalized);
+        if(!has_remap) add_file(input.pack_path, input.source_path);
         if(extension == ".gd") {
-            const auto gdc_path = replace_virtual_extension(normalized, ".gdc");
-            const auto autoconverted_gdc = project_dir_ / ".autoconverted" / gddelta::common::path_from_utf8(gdc_path);
+            const auto gdc_pack_path = replace_virtual_extension(input.pack_path, ".gdc");
+            const auto gdc_source_path = replace_virtual_extension(input.source_path, ".gdc");
+            const auto autoconverted_gdc = project_dir_ / ".autoconverted" / gddelta::common::path_from_utf8(gdc_source_path);
             if(std::filesystem::exists(autoconverted_gdc)) {
-                add_existing_file(gdc_path, autoconverted_gdc);
+                add_existing_file(gdc_pack_path, autoconverted_gdc);
             }else {
-                add_optional_file(gdc_path);
+                add_optional_file(gdc_pack_path, gdc_source_path);
             }
         }
 
-        add_optional_file(normalized + ".remap");
+        add_optional_file(input.pack_path + ".remap", input.source_path + ".remap");
         for(const auto& remap_output : remap_outputs) {
-            add_optional_file(remap_output);
+            add_optional_file(remap_output, remap_output);
         }
-        add_optional_file(normalized + ".uid");
-        add_optional_file(normalized + ".import");
-        for(const auto& import_output : collect_import_outputs(normalized)) {
-            add_optional_file(import_output);
+        add_optional_file(input.pack_path + ".uid", input.source_path + ".uid");
+        add_optional_file(input.pack_path + ".import", input.source_path + ".import");
+        for(const auto& import_output : collect_import_outputs(input.source_path)) {
+            add_optional_file(import_output, import_output);
         }
 
         if(export_it != export_map_.end()) {
-            add_optional_file(export_it->second);
+            add_optional_file(export_it->second, export_it->second);
         }
 
         if(!has_remap) {
-            for(const auto& reference : collect_text_resource_references(normalized)) {
+            for(const auto& reference : collect_text_resource_references(input.source_path)) {
                 if(seen_inputs.insert(reference).second) {
-                    pending_inputs.push(reference);
+                    pending_inputs.push(ProjectInputPath { reference, reference });
                 }
             }
         }
@@ -215,12 +225,24 @@ std::vector<gddelta::pck::PckWriteFile> RuntimePatchResolver::collect_patch_file
     return files;
 }
 
+std::vector<gddelta::pck::PckWriteFile> RuntimePatchResolver::collect_patch_files(
+    const std::vector<std::string>& input_paths,
+    bool legacy_simple
+) const {
+    std::vector<ProjectInputPath> normalized_inputs;
+    normalized_inputs.reserve(input_paths.size());
+    for(const auto& input_path : input_paths) {
+        normalized_inputs.push_back(make_identity_input_path(input_path));
+    }
+    return collect_patch_files(normalized_inputs, legacy_simple);
+}
+
 std::vector<std::string> RuntimePatchResolver::collect_auto_input_paths(const pck::PckReader& base_reader) const {
     const auto include_patterns = load_include_patterns(project_dir_);
     std::vector<std::string> dirty_inputs;
     for(const auto& input_path : collect_included_source_paths()) {
-        if(matches_forced_include_patterns(input_path, include_patterns)) {
-            dirty_inputs.push_back(input_path);
+        if(matches_forced_include_patterns(input_path.source_path, include_patterns)) {
+            dirty_inputs.push_back(input_path.source_path);
             continue;
         }
 
@@ -228,7 +250,7 @@ std::vector<std::string> RuntimePatchResolver::collect_auto_input_paths(const pc
         const auto differs = std::any_of(patch_files.begin(), patch_files.end(), [&](const pck::PckWriteFile& file) {
             return patch_file_differs_from_base(base_reader, file);
         });
-        if(differs) dirty_inputs.push_back(input_path);
+        if(differs) dirty_inputs.push_back(input_path.source_path);
     }
     return dirty_inputs;
 }
@@ -314,9 +336,17 @@ std::optional<RuntimePatchResolver::TimestampedPath> RuntimePatchResolver::find_
     return newest;
 }
 
-std::vector<std::string> RuntimePatchResolver::collect_included_source_paths() const {
+std::vector<ProjectInputPath> RuntimePatchResolver::collect_included_source_paths() const {
+    const auto project_include_path = project_dir_ / kProjectIncludeFileName;
+    if(!std::filesystem::exists(project_include_path)) {
+        throw std::runtime_error(
+            "Missing required include file: " + project_include_path.string()
+            + ". Create .gddeltainclude in the project root before using project directory commands."
+        );
+    }
+
     const auto include_patterns = load_include_patterns(project_dir_);
-    std::vector<std::string> source_paths;
+    std::vector<ProjectInputPath> source_paths;
 
     std::error_code ec;
     auto it = std::filesystem::recursive_directory_iterator(project_dir_, ec);
@@ -338,8 +368,29 @@ std::vector<std::string> RuntimePatchResolver::collect_included_source_paths() c
 
             if(it->is_regular_file() && is_project_source_candidate(relative_path)) {
                 const auto normalized_path = normalize_project_relative_path(gddelta::common::path_to_utf8(relative_path));
-                if(matches_include_patterns(normalized_path, include_patterns)) {
-                    source_paths.push_back(normalized_path);
+                auto matched_any = false;
+                auto include_path = false;
+                auto mapped_pack_path = normalized_path;
+                for(const auto& pattern : include_patterns) {
+                    if(!std::regex_match(normalized_path, pattern.pattern)) continue;
+                    matched_any = true;
+                    if(pattern.mode == IncludeRuleMode::Exclude) {
+                        include_path = false;
+                        mapped_pack_path = normalized_path;
+                        continue;
+                    }
+                    include_path = true;
+                    if(pattern.mapped_pack_path.has_value()) {
+                        mapped_pack_path = *pattern.mapped_pack_path;
+                    }else {
+                        mapped_pack_path = normalized_path;
+                    }
+                }
+                if(matched_any && include_path) {
+                    source_paths.push_back(ProjectInputPath {
+                        normalized_path,
+                        mapped_pack_path
+                    });
                 }
             }
         } catch(const std::filesystem::filesystem_error&) {
@@ -348,7 +399,10 @@ std::vector<std::string> RuntimePatchResolver::collect_included_source_paths() c
         it.increment(ec);
     }
 
-    std::sort(source_paths.begin(), source_paths.end());
+    std::sort(source_paths.begin(), source_paths.end(), [](const ProjectInputPath& left, const ProjectInputPath& right) {
+        if(left.pack_path != right.pack_path) return left.pack_path < right.pack_path;
+        return left.source_path < right.source_path;
+    });
     return source_paths;
 }
 
@@ -421,13 +475,9 @@ std::unordered_map<std::string, std::string> RuntimePatchResolver::load_export_f
 std::vector<RuntimePatchResolver::IncludeRule> RuntimePatchResolver::load_include_patterns(const std::filesystem::path& project_dir) {
     return gddelta::common::load_include_patterns(
         project_dir,
-        std::filesystem::current_path() / kDefaultIncludeFilePath,
+        std::filesystem::current_path() / kDefaultIncludeFileName,
         kProjectIncludeFileName
     );
-}
-
-bool RuntimePatchResolver::matches_include_patterns(const std::string& path, const std::vector<IncludeRule>& patterns) {
-    return gddelta::common::matches_include_patterns(path, patterns);
 }
 
 bool RuntimePatchResolver::matches_forced_include_patterns(const std::string& path, const std::vector<IncludeRule>& patterns) {
