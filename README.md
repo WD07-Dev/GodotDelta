@@ -195,7 +195,7 @@ gddelta make game.exe my_mod_project mod.gdmod --base-key 0123...
 gddelta dev-build game.exe my_mod_project output/live-dev --base-key 0123...
 ```
 
-The GUI also exposes a `Base Key` field on Dev tabs.
+The GUI exposes a `Base Key` field whenever Advanced Features are enabled.
 
 ## GUI
 
@@ -220,7 +220,7 @@ Current behavior:
 - command execution runs in the background
 - logs stream into the window while the command runs
 - buttons and inputs are disabled while a command is running
-- the `Base Key` field is only shown on Dev tabs
+- Advanced Features exposes the `Base Key` field for encrypted-game workflows
 
 ## GDRETools Integration
 
