@@ -1,10 +1,15 @@
 #include "cli.app.h"
+#include "core/common/path_utils.h"
 #include<fstream>
 #include<iostream>
 #include<stdexcept>
 using namespace std;
 
 namespace {
+    std::filesystem::path path_arg(const char* value) {
+        return gddelta::common::path_from_utf8(value);
+    }
+
     class ScopedLogRedirect {
         public:
             explicit ScopedLogRedirect(const std::optional<std::filesystem::path>& log_file_path) {
@@ -55,7 +60,7 @@ CliApplication::CliApplication():
 }
 
 int CliApplication::run(int argc, char **argv) {
-    support_.set_cli_path(argv[0]);
+    support_.set_cli_path(path_arg(argv[0]));
 
     if(argc < 2) {
         print_usage();
@@ -71,7 +76,7 @@ int CliApplication::run(int argc, char **argv) {
             if(std::string_view(argv[argc - 1]).empty()) {
                 throw std::runtime_error("Invalid log file option. Expected --log-file <path>.");
             }
-            log_file_path = std::filesystem::path(argv[argc - 1]);
+            log_file_path = path_arg(argv[argc - 1]);
             argc -= 2;
             parsed_option = true;
             continue;
@@ -150,7 +155,7 @@ CliApplication::WatchCommandOptions CliApplication::parse_watch_options(int argc
         if(std::string_view(argv[current_index]) != "--log-file" || argc <= current_index + 1) {
             throw std::runtime_error("Invalid watch options. Expected [interval_ms] [--log-file path].");
         }
-        options.log_file_path = std::filesystem::path(argv[current_index + 1]);
+        options.log_file_path = path_arg(argv[current_index + 1]);
         current_index += 2;
     }
 
@@ -163,54 +168,54 @@ CliApplication::WatchCommandOptions CliApplication::parse_watch_options(int argc
 
 int CliApplication::run_command(std::string_view command, int argc, char **argv) {
     if(command == "ui") {
-        support_.launch_ui(argv[0]);
+        support_.launch_ui(path_arg(argv[0]));
         return 0;
     }
 
     if(command == "bootstrap") {
-        support_.ensure_gdre_tools(argv[0]);
+        support_.ensure_gdre_tools(path_arg(argv[0]));
         return 0;
     }
 
     if(command == "inspect") {
         if(!require_arg_count(argc, 3)) return 1;
-        commands_.inspect_pack(argv[2]);
+        commands_.inspect_pack(path_arg(argv[2]));
         return 0;
     }
 
     if(command == "diff") {
         if(!require_arg_count(argc, 4)) return 1;
-        commands_.diff_workspace(argv[2], argv[3]);
+        commands_.diff_workspace(path_arg(argv[2]), path_arg(argv[3]));
         return 0;
     }
 
     if(command == "patch") {
         if(!require_arg_count(argc, 5)) return 1;
-        commands_.build_patch_pack(argv[2], argv[3], argv[4]);
+        commands_.build_patch_pack(path_arg(argv[2]), path_arg(argv[3]), path_arg(argv[4]));
         return 0;
     }
 
     // Legacy advanced alias kept for compatibility.
     if(command == "runtime-patch") {
         if(!require_arg_count(argc, 6)) return 1;
-        commands_.build_patch_pck_from_dirs(argv[2], argv[3], argv[4], argv[5]);
+        commands_.build_patch_pck_from_dirs(path_arg(argv[2]), path_arg(argv[3]), path_arg(argv[4]), path_arg(argv[5]));
         return 0;
     }
 
     // Legacy advanced alias kept for compatibility.
     if(command == "trace-runtime") {
         if(!require_arg_count(argc, 4)) return 1;
-        commands_.trace_runtime_paths(argv[2], collect_input_paths(3, argc, argv));
+        commands_.trace_runtime_paths(path_arg(argv[2]), collect_input_paths(3, argc, argv));
         return 0;
     }
 
     if(command == "make") {
         if(!require_arg_count(argc, 5)) return 1;
-        const auto output_path = std::filesystem::path(argv[4]);
+        const auto output_path = path_arg(argv[4]);
         if(output_path.extension() == ".pck") {
-            commands_.build_patch_pck_auto(argv[2], argv[3], output_path);
+            commands_.build_patch_pck_auto(path_arg(argv[2]), path_arg(argv[3]), output_path);
         }else {
-            commands_.build_gdmod(argv[2], argv[3], output_path);
+            commands_.build_gdmod(path_arg(argv[2]), path_arg(argv[3]), output_path);
         }
         return 0;
     }
@@ -218,7 +223,7 @@ int CliApplication::run_command(std::string_view command, int argc, char **argv)
     // Legacy advanced alias kept for compatibility.
     if(command == "runtime-patch-files") {
         if(!require_arg_count(argc, 6)) return 1;
-        commands_.build_patch_pck_from_inputs(argv[2], argv[3], argv[4], collect_input_paths(5, argc, argv));
+        commands_.build_patch_pck_from_inputs(path_arg(argv[2]), path_arg(argv[3]), path_arg(argv[4]), collect_input_paths(5, argc, argv));
         return 0;
     }
 
@@ -226,40 +231,40 @@ int CliApplication::run_command(std::string_view command, int argc, char **argv)
     if(command == "watch-runtime-patch") {
         if(!require_arg_count(argc, 5)) return 1;
         const auto options = parse_watch_options(argc, argv, 5);
-        commands_.watch_patch_pck(argv[2], argv[3], argv[4], options.interval_ms, options.log_file_path);
+        commands_.watch_patch_pck(path_arg(argv[2]), path_arg(argv[3]), path_arg(argv[4]), options.interval_ms, options.log_file_path);
         return 0;
     }
 
     if(command == "dev-build-patch") {
         if(!require_arg_count(argc, 4)) return 1;
         if(argc >= 5) {
-            commands_.build_dev_sandbox_from_pck(argv[2], argv[3], argv[4]);
+            commands_.build_dev_sandbox_from_pck(path_arg(argv[2]), path_arg(argv[3]), path_arg(argv[4]));
         }else {
-            commands_.apply_pck_in_place(argv[2], argv[3]);
+            commands_.apply_pck_in_place(path_arg(argv[2]), path_arg(argv[3]));
         }
         return 0;
     }
 
     if(command == "apply") {
         if(!require_arg_count(argc, 4)) return 1;
-        const auto input_path = std::filesystem::path(argv[3]);
+        const auto input_path = path_arg(argv[3]);
         const auto is_gdmod_input = input_path.extension() == ".gdmod";
         if(is_gdmod_input) {
             if(argc >= 5) {
-                const auto output_path = std::filesystem::path(argv[4]);
+                const auto output_path = path_arg(argv[4]);
                 if(output_path.extension() == ".pck") {
-                    commands_.recover_gdmod_to_pck(argv[2], argv[3], output_path);
+                    commands_.recover_gdmod_to_pck(path_arg(argv[2]), input_path, output_path);
                 }else {
-                    commands_.apply_gdmod(argv[2], argv[3], output_path);
+                    commands_.apply_gdmod(path_arg(argv[2]), input_path, output_path);
                 }
             }else {
-                commands_.apply_gdmod(argv[2], argv[3], std::nullopt);
+                commands_.apply_gdmod(path_arg(argv[2]), input_path, std::nullopt);
             }
         }else {
             if(argc >= 5) {
-                commands_.build_dev_sandbox_from_pck(argv[2], argv[3], argv[4]);
+                commands_.build_dev_sandbox_from_pck(path_arg(argv[2]), input_path, path_arg(argv[4]));
             }else {
-                commands_.apply_pck_in_place(argv[2], argv[3]);
+                commands_.apply_pck_in_place(path_arg(argv[2]), input_path);
             }
         }
         return 0;
@@ -271,26 +276,26 @@ int CliApplication::run_command(std::string_view command, int argc, char **argv)
             throw std::runtime_error("watch-dev-build-patch requires non-empty base, project, patch, and sandbox paths.");
         }
         const auto options = parse_watch_options(argc, argv, 6);
-        commands_.watch_dev_sandbox_from_patch_pck(argv[2], argv[3], argv[4], argv[5], options.interval_ms, options.log_file_path);
+        commands_.watch_dev_sandbox_from_patch_pck(path_arg(argv[2]), path_arg(argv[3]), path_arg(argv[4]), path_arg(argv[5]), options.interval_ms, options.log_file_path);
         return 0;
     }
 
     if(command == "dev-build") {
         if(!require_arg_count(argc, 5)) return 1;
-        commands_.build_dev_sandbox(argv[2], argv[3], argv[4]);
+        commands_.build_dev_sandbox(path_arg(argv[2]), path_arg(argv[3]), path_arg(argv[4]));
         return 0;
     }
 
     if(command == "watch") {
         if(!require_arg_count(argc, 5)) return 1;
         const auto options = parse_watch_options(argc, argv, 5);
-        commands_.watch_dev_sandbox(argv[2], argv[3], argv[4], options.interval_ms, options.log_file_path);
+        commands_.watch_dev_sandbox(path_arg(argv[2]), path_arg(argv[3]), path_arg(argv[4]), options.interval_ms, options.log_file_path);
         return 0;
     }
 
     if(command == "compose") {
         if(!require_arg_count(argc, 5)) return 1;
-        commands_.compose_pck(argv[2], argv[3], argv[4]);
+        commands_.compose_pck(path_arg(argv[2]), path_arg(argv[3]), path_arg(argv[4]));
         return 0;
     }
 

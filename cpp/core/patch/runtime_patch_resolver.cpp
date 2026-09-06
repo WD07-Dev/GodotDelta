@@ -113,18 +113,26 @@ std::vector<gddelta::pck::PckWriteFile> RuntimePatchResolver::collect_patch_file
         const auto normalized_pack_path = normalize_project_relative_path(std::string(pack_path));
         const auto normalized_source_path = normalize_project_relative_path(std::string(source_path));
         if(normalized_pack_path.empty() || normalized_source_path.empty() || seen_paths.contains(normalized_pack_path)) return;
+
+        const auto full_source_path = project_dir_ / gddelta::common::path_from_utf8(normalized_source_path);
+        std::error_code ec;
+        const auto source_exists = std::filesystem::exists(full_source_path, ec);
+        if(ec || (source_exists && !std::filesystem::is_regular_file(full_source_path, ec))) return;
+
         seen_paths.insert(normalized_pack_path);
 
         pck::PckWriteFile file;
         file.pack_path = normalized_pack_path;
-        file.source_path = project_dir_ / gddelta::common::path_from_utf8(normalized_source_path);
-        file.removal = !std::filesystem::exists(file.source_path);
+        file.source_path = full_source_path;
+        file.removal = !source_exists;
         files.push_back(std::move(file));
     };
 
     const auto add_existing_file = [&](std::string_view pack_path, const std::filesystem::path& source_path) {
         const auto normalized_pack_path = normalize_project_relative_path(std::string(pack_path));
-        if(normalized_pack_path.empty() || seen_paths.contains(normalized_pack_path) || !std::filesystem::exists(source_path)) return;
+        std::error_code ec;
+        if(normalized_pack_path.empty() || seen_paths.contains(normalized_pack_path)
+        || !std::filesystem::is_regular_file(source_path, ec) || ec) return;
         seen_paths.insert(normalized_pack_path);
 
         pck::PckWriteFile file;

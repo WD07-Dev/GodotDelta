@@ -49,6 +49,9 @@ namespace {
     
     std::uint64_t file_size_checked(const std::filesystem::path& path) {
         std::error_code ec;
+        if(!std::filesystem::is_regular_file(path, ec) || ec) {
+            throw std::runtime_error("PCK entry source is not a regular file: " + path.string());
+        }
         const auto size = std::filesystem::file_size(path, ec);
         if(ec) {
             throw std::runtime_error("Failed to stat file: " + path.string());
