@@ -5,6 +5,7 @@
 #include<array>
 #include<cstdint>
 #include<fstream>
+#include<iostream>
 #include<regex>
 #include<stdexcept>
 #include<string>
@@ -135,6 +136,13 @@ namespace {
         entries.reserve(files.size());
         
         for(const auto& file : files) {
+            std::error_code ec;
+            if(!file.removal && file.inline_data.empty() && file.source_pack_path.empty()
+            && std::filesystem::is_directory(file.source_path, ec)) {
+                std::cerr << "Warning: skipping directory PCK entry source: " << file.source_path << "\n";
+                continue;
+            }
+
             PendingEntry entry;
             entry.source_path = file.source_path;
             entry.source_pack_path = file.source_pack_path;

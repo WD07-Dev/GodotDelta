@@ -93,7 +93,12 @@ int CliApplication::run(int argc, char **argv) {
     support_.set_base_encryption_key(base_encryption_key);
 
     ScopedLogRedirect log_redirect(log_file_path);
-    return run_command(argv[1], argc, argv);
+    try {
+        return run_command(argv[1], argc, argv);
+    } catch(const std::exception& exception) {
+        std::cerr << "FINAL ERROR: " << exception.what() << "\n";
+        return 1;
+    }
 }
 
 void CliApplication::print_usage() {
